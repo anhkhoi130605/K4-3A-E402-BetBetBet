@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VLearn Adaptive AI Tutor</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+  <!-- Header gọn gàng -->
+  <header class="header">
+    <div class="header-left">
+      <span class="logo-icon">VL</span>
+      <span class="header-title">VLearn Adaptive Learning</span>
+    </div>
+
+    <!-- Tabs chuyển đổi giữa góc nhìn Học viên và Giảng viên (Tính năng 4) -->
+    <div class="view-switch">
+      <button id="tab-student-btn" class="switch-btn active">
+        🎓 Học viên (Slide & AI)
+      </button>
+      <button id="tab-instructor-btn" class="switch-btn">
+        👨‍🏫 Giảng viên (Dashboard & Can thiệp)
+      </button>
+    </div>
+
+    <div class="header-right">
+      <select id="slide-deck-select" class="deck-select">
+        <option value="d1">Day 1: AI & LLM Foundation</option>
+        <option value="d2">Day 2: Xác định bài toán AI</option>
+      </select>
+    </div>
+  </header>
+
+  <!-- NỘI DUNG CHÍNH -->
+  <main class="main-container">
+
+    <!-- ================= VIEW 1: HỌC VIÊN (70% SLIDE - 30% AI) ================= -->
+    <section id="student-view" class="view-pane active">
+      <div class="split-70-30">
+
+        <!-- CỘT TRÁI (70%): SLIDE BÀI GIẢNG PDF TO RÕ NÉT -->
+        <div class="slide-pane">
+          <iframe id="slide-pdf-frame" class="slide-frame" src="../Data/vlearn-pack/slides/d1-slide-hackathon.pdf#page=12"></iframe>
+        </div>
+
+        <!-- CỘT PHẢI (30%): AI COMPANION (THEO ĐÚNG SƠ ĐỒ TUẦN TỰ) -->
+        <div class="ai-pane">
+          <!-- Header của AI: Cấp độ, Streak & Điều hướng câu hỏi -->
+          <div class="ai-header">
+            <div class="adaptive-status">
+              <span id="level-badge" class="level-tag">Level 1</span>
+              <span id="streak-badge" class="streak-tag">🔥 Chuỗi đúng: 0/2</span>
+            </div>
+
+            <div class="q-controls">
+              <button id="btn-prev-q" class="mini-btn" title="Câu trước">◀</button>
+              <select id="question-select" class="mini-select">
+                <option value="6">Câu 1 (Slide 6)</option>
+                <option value="12" selected>Câu 2 (Slide 12)</option>
+                <option value="14">Câu 3 (Slide 14)</option>
+                <option value="18">Câu 4 (Slide 18)</option>
+                <option value="20">Câu 5 (Slide 20)</option>
+                <option value="22">Câu 6 (Slide 22)</option>
+                <option value="25">Câu 7 (Slide 25)</option>
+              </select>
+              <button id="btn-next-q" class="mini-btn" title="Câu sau">▶</button>
+            </div>
+          </div>
+
+          <!-- Nội dung hỏi đáp và chẩn đoán -->
+          <div class="ai-body">
+            <!-- Cầu nối tri thức (Bắc cầu lý thuyết từ slide trước) -->
+            <div id="bridge-card" class="bridge-card">
+              <div class="bridge-label" id="bridge-flow">Slide 6 ➔ Slide 12</div>
+              <div class="bridge-note" id="bridge-note">
+                Ở Slide 6, bạn đã biết mô hình sinh chuỗi theo 'token'. Sang Slide 12, giảng viên chỉ rõ Token là gì và tại sao tiếng Việt lại đặc biệt.
+              </div>
+            </div>
+
+            <!-- Thẻ câu hỏi tương tác -->
+            <div class="question-card">
+              <div id="question-title" class="question-title">
+                Đang tải câu hỏi liên kết...
+              </div>
+
+              <div id="options-container" class="options-container">
+                <!-- Nút A / B sẽ render ở đây -->
+              </div>
+
+              <!-- Phản hồi chẩn đoán Socratic / Misconception -->
+              <div id="diagnostic-feedback" class="diagnostic-feedback"></div>
+            </div>
+
+            <!-- Khung trao đổi & phản tư của học viên -->
+            <div class="chat-section">
+              <div class="chat-section-title">Trao đổi phản tư cùng AI:</div>
+              <div id="chat-messages" class="chat-messages">
+                <div class="chat-msg tutor">
+                  Khi bạn chuyển câu hỏi, slide bên trái sẽ chuyển trang tương ứng. Bạn hãy quan sát slide và trả lời để kiểm tra mức độ hiểu sâu nhé.
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Thanh nhập phản hồi tự do -->
+          <div class="chat-bar">
+            <input type="text" id="chat-input-text" class="chat-input-text" placeholder="Gõ câu trả lời hoặc trao đổi cùng bot..." />
+            <button id="btn-send-chat" class="btn-send-chat">Gửi</button>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ================= VIEW 2: GIẢNG VIÊN (TÍNH NĂNG 4 TRONG SƠ ĐỒ) ================= -->
+    <section id="instructor-view" class="view-pane">
+      <div class="instructor-container">
+        <!-- Hàng 4 thẻ chỉ số tổng quan lớp -->
+        <div class="kpi-grid">
+          <div class="kpi-card">
+            <div class="kpi-title">Điểm nghẽn lớn nhất (Khảo sát)</div>
+            <div class="kpi-num red">45.1%</div>
+            <div class="kpi-desc">Hiểu lý thuyết nhưng kẹt cách áp dụng vào bài tập</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-title">Hiểu lơ mơ / Ngộ nhận</div>
+            <div class="kpi-num orange">33.3%</div>
+            <div class="kpi-desc">Thường hiểu mơ hồ và không biết mình sai ở đâu</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-title">Nhu cầu Productive Failure</div>
+            <div class="kpi-num green">76.9%</div>
+            <div class="kpi-desc">Học viên muốn thử làm trước rồi AI phân tích lỗi sai</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-title">AI cũ thiếu Socratic (Chatlog)</div>
+            <div class="kpi-num yellow">0.2%</div>
+            <div class="kpi-desc">Chỉ 28 / 13.494 lượt hỏi định hướng (90% lý thuyết 1 chiều)</div>
+          </div>
+        </div>
+
+        <!-- Lưới phân tích & Bảng can thiệp -->
+        <div class="instructor-grid">
+          <!-- Bảng Heatmap Điểm nghẽn Cả lớp -->
+          <div class="inst-card">
+            <div class="card-heading">
+              <span>🔥 Bảng Điểm Nghẽn & Ngộ Nhận Phổ Biến Của Lớp (Misconception Heatmap)</span>
+            </div>
+            <table class="simple-table">
+              <thead>
+                <tr>
+                  <th>Khái niệm / Lỗ hổng</th>
+                  <th>Số HV kẹt</th>
+                  <th>Tỷ lệ lớp</th>
+                  <th>Mức độ</th>
+                </tr>
+              </thead>
+              <tbody id="heatmap-body">
+                <!-- Render từ data -->
+              </tbody>
+            </table>
+
+            <div class="card-heading" style="margin-top: 20px;">
+              <span>👥 Danh Sách Học Viên Cần Theo Dõi</span>
+            </div>
+            <table class="simple-table">
+              <thead>
+                <tr>
+                  <th>Mã HV</th>
+                  <th>Cấp độ</th>
+                  <th>Chuỗi đúng</th>
+                  <th>Lỗi gần nhất</th>
+                  <th>Trạng thái</th>
+                  <th>Can thiệp</th>
+                </tr>
+              </thead>
+              <tbody id="roster-body">
+                <!-- Render từ data -->
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Trung tâm Can thiệp / Ghi đè chẩn đoán của Giảng viên -->
+          <div class="inst-card override-panel">
+            <div class="card-heading">
+              <span>🛠️ Can Thiệp & Điều Chỉnh Kịch Bản (Instructor Override)</span>
+            </div>
+            <p class="inst-desc">
+              Giảng viên có thể điều chỉnh lại chẩn đoán của Bot, gửi chỉ dẫn trực tiếp tới học viên, hoặc hạ cấp gợi ý (Scaffolding).
+            </p>
+
+            <div class="form-group">
+              <label>Học viên được chọn:</label>
+              <input type="text" id="override-student-id" class="form-input" value="S0448" readonly />
+            </div>
+
+            <div class="form-group">
+              <label>Lỗi ngộ nhận Bot vừa phát hiện:</label>
+              <input type="text" id="override-student-error" class="form-input" value="Cho rằng Attention đọc tuần tự từng từ" readonly />
+            </div>
+
+            <div class="form-group">
+              <label>Hành động can thiệp (Action):</label>
+              <select id="override-action-select" class="form-select">
+                <option value="relabel">Đổi nhãn: Học viên nhầm với cơ chế RNN, không phải LSTM</option>
+                <option value="scaffold">Hạ cấp độ: Yêu cầu Bot chia thành 3 sub-step nhỏ (Scaffolding)</option>
+                <option value="cleared">Xác nhận học viên đã hiểu bài (Clear Flag)</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label>Ghi chú riêng của Giảng viên:</label>
+              <textarea id="override-notes" class="form-textarea" rows="3" placeholder="Nhập lời dặn hoặc ghi chú riêng cho học viên..."></textarea>
+            </div>
+
+            <button id="btn-submit-override" class="btn-primary">
+              💾 Lưu Can Thiệp & Cập Nhật Phiên Học
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <script src="data.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
