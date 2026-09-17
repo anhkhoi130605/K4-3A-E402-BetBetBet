@@ -7,6 +7,7 @@ from typing import Dict, Any, Optional
 from backend.models.schemas import (
     SlideQuestionResponse,
     QuestionOption,
+    QuestionVariant,
     StudentAnswerRequest,
     AnswerEvaluationResponse,
     MisconceptionDiagnostic,
