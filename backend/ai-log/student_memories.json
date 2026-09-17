@@ -1,0 +1,102 @@
+{
+  "updated_at": "2026-09-18T02:01:27.874230",
+  "profiles": {
+    "S0102": {
+      "student_id": "S0102",
+      "name": "Nguyễn Văn An (S0102)",
+      "misconceptions": [
+        {
+          "slide": 12,
+          "faulty_assumption": "Đồng nhất 1 từ tiếng Việt = 1 token như tiếng Anh",
+          "recorded_at": "2026-09-17T14:30:00",
+          "status": "resolved"
+        },
+        {
+          "slide": 12,
+          "faulty_assumption": "Đồng nhất 1 từ tiếng Việt với 1 token (như tiếng Anh)",
+          "recorded_at": "2026-09-18T01:58:36.104546",
+          "status": "resolved"
+        },
+        {
+          "slide": 18,
+          "faulty_assumption": "Nghĩ rằng Transformer duyệt tuần tự từng từ như con người hay RNN/LSTM cũ",
+          "recorded_at": "2026-09-18T01:58:36.113966",
+          "status": "resolved"
+        },
+        {
+          "slide": 20,
+          "faulty_assumption": "Ngộ nhận khái niệm cốt lõi trong slide",
+          "recorded_at": "2026-09-18T02:01:27.874230",
+          "status": "active"
+        }
+      ],
+      "masteries": [
+        {
+          "slide": 6,
+          "concept": "Lịch sử AI và Hệ chuyên gia luật IF-THEN",
+          "recorded_at": "2026-09-17T14:15:00"
+        },
+        {
+          "slide": 12,
+          "concept": "Slide 12",
+          "recorded_at": "2026-09-18T01:58:36.122894"
+        },
+        {
+          "slide": 6,
+          "concept": "Slide 6",
+          "recorded_at": "2026-09-18T01:58:36.595615"
+        },
+        {
+          "slide": 18,
+          "concept": "Slide 18",
+          "recorded_at": "2026-09-18T02:01:27.857205"
+        },
+        {
+          "slide": 20,
+          "concept": "Slide 20",
+          "recorded_at": "2026-09-18T02:01:27.868230"
+        }
+      ],
+      "learning_style": "Thích ví dụ thực tế và giải thích trực quan về chi phí token"
+    },
+    "S0448": {
+      "student_id": "S0448",
+      "misconceptions": [
+        {
+          "slide": 18,
+          "faulty_assumption": "Nghĩ rằng Transformer duyệt tuần tự từng từ như con người hay RNN/LSTM cũ",
+          "recorded_at": "2026-09-18T02:01:21.920692",
+          "status": "active"
+        }
+      ],
+      "masteries": [],
+      "learning_style": "Cần tiếp cận sư phạm Socratic từng bước"
+    },
+    "S0912": {
+      "student_id": "S0912",
+      "misconceptions": [
+        {
+          "slide": 22,
+          "faulty_assumption": "Bỏ quên chi phí Input Token của System Prompt trong mỗi lượt gọi API",
+          "recorded_at": "2026-09-18T02:01:23.978285",
+          "status": "active"
+        }
+      ],
+      "masteries": [],
+      "learning_style": "Cần tiếp cận sư phạm Socratic từng bước"
+    },
+    "S1205": {
+      "student_id": "S1205",
+      "misconceptions": [
+        {
+          "slide": 22,
+          "faulty_assumption": "Ngộ nhận khái niệm cốt lõi trong slide",
+          "recorded_at": "2026-09-18T02:01:23.990666",
+          "status": "active"
+        }
+      ],
+      "masteries": [],
+      "learning_style": "Cần tiếp cận sư phạm Socratic từng bước"
+    }
+  }
+}
