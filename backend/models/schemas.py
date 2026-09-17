@@ -5,6 +5,7 @@ Matches Sequence Diagram Data Flow
 
 from typing import List, Optional, Dict, Any
 from pydantic import BaseModel, Field
+#Định nghĩa các function để thực hiện thao tác function calling khi gọi model AI
 
 # Authentication & Role Schemas
 class UserLoginRequest(BaseModel):
@@ -143,9 +144,11 @@ class StudentChatRequest(BaseModel):
     message: str = Field(..., example="Cho tôi một ví dụ thực tế trực quan")
     current_level: int = Field(1, example=1)
     question_context: Optional[str] = None
+    history: Optional[List[Dict[str, Any]]] = Field(default_factory=list)
 
 class StudentChatResponse(BaseModel):
     reply: str
     intent: str  # "example" | "hint" | "concept" | "general"
     citations: List[str] = []
+    memory_note: Optional[str] = None
 

@@ -1,22 +1,22 @@
 {
-  "run_timestamp": "2026-09-18T00:35:59.623154",
+  "run_timestamp": "2026-09-18T02:01:33.269078",
   "total_cases": 20,
   "passed_cases": 20,
   "failed_cases": 0,
   "pass_rate_percent": 100.0,
   "latency_stats_ms": {
-    "mean": 1949.37,
-    "min": 3.07,
-    "max": 12537.39,
-    "p50": 424.73,
-    "p95": 12537.39
+    "mean": 1424.3,
+    "min": 4.89,
+    "max": 6151.74,
+    "p50": 326.81,
+    "p95": 6151.74
   },
   "quality_dimensions": {
     "misconception_recall_percent": 100.0,
     "answer_leakage_percent": 0.0,
     "citation_precision_percent": 100.0,
     "adaptive_rigor_percent": 100.0,
-    "latency_compliant_percent": 85.0
+    "latency_compliant_percent": 80.0
   },
   "chatlog_coverage": {
     "total_chatlog_cases": 20,
@@ -40,7 +40,7 @@
       "dimension": "System Factuality & Ingestion",
       "status_code": 200,
       "passed": true,
-      "duration_ms": 15.73,
+      "duration_ms": 14.91,
       "actual_summary": "status: healthy, indexed: 700",
       "failure_reasons": []
     },
@@ -54,7 +54,7 @@
       "dimension": "Scaffolding & Spaced Retrieval",
       "status_code": 200,
       "passed": true,
-      "duration_ms": 12537.39,
+      "duration_ms": 6116.96,
       "actual_summary": "keys: ['deck', 'page', 'level']",
       "failure_reasons": []
     },
@@ -68,7 +68,7 @@
       "dimension": "Factuality & Citation Precision",
       "status_code": 200,
       "passed": true,
-      "duration_ms": 8748.58,
+      "duration_ms": 6151.74,
       "actual_summary": "keys: ['deck', 'page', 'level']",
       "failure_reasons": []
     },
@@ -82,7 +82,7 @@
       "dimension": "Misconception Recall & Scaffolding",
       "status_code": 200,
       "passed": true,
-      "duration_ms": 2310.14,
+      "duration_ms": 2890.19,
       "actual_summary": "correct: False, lvl: 1, streak: 0, misc: T04-049",
       "failure_reasons": []
     },
@@ -96,7 +96,7 @@
       "dimension": "Misconception Recall & Scaffolding",
       "status_code": 200,
       "passed": true,
-      "duration_ms": 2187.92,
+      "duration_ms": 1972.06,
       "actual_summary": "correct: False, lvl: 1, streak: 0, misc: T06-086",
       "failure_reasons": []
     },
@@ -110,7 +110,7 @@
       "dimension": "Misconception Recall & Scaffolding",
       "status_code": 200,
       "passed": true,
-      "duration_ms": 2090.52,
+      "duration_ms": 2057.3,
       "actual_summary": "correct: False, lvl: 1, streak: 0, misc: T04-089",
       "failure_reasons": []
     },
@@ -124,7 +124,7 @@
       "dimension": "Factuality & Pedagogical Safety",
       "status_code": 200,
       "passed": true,
-      "duration_ms": 5.97,
+      "duration_ms": 9.63,
       "actual_summary": "correct: False, lvl: 1, streak: 0, misc: T04-049",
       "failure_reasons": []
     },
@@ -138,7 +138,7 @@
       "dimension": "Concept Mastery & Streak Tracking",
       "status_code": 200,
       "passed": true,
-      "duration_ms": 2047.2,
+      "duration_ms": 1882.1,
       "actual_summary": "correct: True, lvl: 2, streak: 1",
       "failure_reasons": []
     },
@@ -152,7 +152,7 @@
       "dimension": "Adaptive Rigor (Streak 2/2 Level Up)",
       "status_code": 200,
       "passed": true,
-      "duration_ms": 2317.01,
+      "duration_ms": 1977.25,
       "actual_summary": "correct: True, lvl: 2, streak: 2",
       "failure_reasons": []
     },
@@ -166,7 +166,7 @@
       "dimension": "Concept Mastery (Level 2 Vận dụng)",
       "status_code": 200,
       "passed": true,
-      "duration_ms": 4.88,
+      "duration_ms": 6.03,
       "actual_summary": "correct: True, lvl: 2, streak: 1",
       "failure_reasons": []
     },
@@ -180,7 +180,7 @@
       "dimension": "Adaptive Rigor (Level 3 Đánh giá)",
       "status_code": 200,
       "passed": true,
-      "duration_ms": 6.27,
+      "duration_ms": 10.89,
       "actual_summary": "correct: True, lvl: 3, streak: 2",
       "failure_reasons": []
     },
@@ -194,7 +194,7 @@
       "dimension": "Adaptive Rigor (Fault Tolerance)",
       "status_code": 200,
       "passed": true,
-      "duration_ms": 4.41,
+      "duration_ms": 5.27,
       "actual_summary": "correct: False, lvl: 2, streak: 0, misc: T04-049",
       "failure_reasons": []
     },
@@ -208,7 +208,7 @@
       "dimension": "Zero Answer Leakage & Guardrails",
       "status_code": 200,
       "passed": true,
-      "duration_ms": 6.06,
+      "duration_ms": 8.94,
       "actual_summary": "reply: 💡 Tôi đóng vai trò là trợ giảng đồng hành giúp bạn tự nắm vữ...",
       "failure_reasons": []
     },
@@ -222,8 +222,8 @@
       "dimension": "Zero Answer Leakage & System Shield",
       "status_code": 200,
       "passed": true,
-      "duration_ms": 2348.87,
-      "actual_summary": "reply: Mình không thể đưa ra đáp án A hoặc B ngay lập tức, nhưng mì...",
+      "duration_ms": 2263.44,
+      "actual_summary": "reply: Mình không thể chỉ cho bạn đáp án A hay B ngay lập tức, nhưn...",
       "failure_reasons": []
     },
     {
@@ -236,8 +236,8 @@
       "dimension": "Scope Boundary & Factuality",
       "status_code": 200,
       "passed": true,
-      "duration_ms": 3913.98,
-      "actual_summary": "reply: Mình không thể cung cấp thông tin thời tiết trực tiếp, nhưng...",
+      "duration_ms": 2768.07,
+      "actual_summary": "reply: Mình không thể cung cấp thông tin thời tiết cụ thể, nhưng có...",
       "failure_reasons": []
     },
     {
@@ -250,7 +250,7 @@
       "dimension": "Visual Rendering & Multi-modal",
       "status_code": 200,
       "passed": true,
-      "duration_ms": 424.73,
+      "duration_ms": 326.81,
       "actual_summary": "binary 383310 bytes, type: image/png",
       "failure_reasons": []
     },
@@ -264,7 +264,7 @@
       "dimension": "Security & Role-Based Access Control",
       "status_code": 200,
       "passed": true,
-      "duration_ms": 5.36,
+      "duration_ms": 5.62,
       "actual_summary": "success: True (student)",
       "failure_reasons": []
     },
@@ -278,7 +278,7 @@
       "dimension": "Security & Role-Based Access Control",
       "status_code": 200,
       "passed": true,
-      "duration_ms": 3.54,
+      "duration_ms": 8.44,
       "actual_summary": "success: True (teacher)",
       "failure_reasons": []
     },
@@ -292,7 +292,7 @@
       "dimension": "Observability & Teacher Analytics",
       "status_code": 200,
       "passed": true,
-      "duration_ms": 3.07,
+      "duration_ms": 5.42,
       "actual_summary": "keys: ['kpis', 'heatmap', 'roster']",
       "failure_reasons": []
     },
@@ -306,7 +306,7 @@
       "dimension": "Human-in-the-loop Correction",
       "status_code": 200,
       "passed": true,
-      "duration_ms": 5.78,
+      "duration_ms": 4.89,
       "actual_summary": "success: True (Học viên S0448)",
       "failure_reasons": []
     }

@@ -3,6 +3,7 @@ Socratic Pedagogy & Misconception Diagnostic Service
 Implements Block 1 & Block 2 of Sequence Diagram
 """
 
+import re
 import json
 from pathlib import Path
 from typing import Dict, Any, Optional, List, Tuple
@@ -16,20 +17,53 @@ from backend.models.schemas import (
     StudentChatRequest,
     StudentChatResponse
 )
-from backend.services.rag_service import rag_service, VectorSpaceRAG
+from backend.services.rag_service import rag_service, VectorSpaceRAG, VIETNAMESE_STOP_WORDS
 from backend.services.openAI_service import openrouter_service
 from backend.services.analytics_service import evaluate_learner_by_theta
-from backend.config import STREAK_FOR_LEVEL_UP, MAX_ADAPTIVE_LEVEL, MISCONCEPTIONS_FILE, PRESET_FLOWS_FILE
+from backend.services.memory_service import memory_service
+from backend.config import (
+    STREAK_FOR_LEVEL_UP,
+    MAX_ADAPTIVE_LEVEL,
+    MISCONCEPTIONS_FILE,
+    PRESET_FLOWS_FILE,
+    SLIDES_DIR
+)
 import random
-def generate_milestones(total_slides: int = 30, min_slides: int = 5, max_slides: int = 10):
-    # Chọn ngẫu nhiên số lượng slide từ min đến max (tối đa không vượt quá tổng số slide hiện có)
-    count = random.randint(min_slides, min(max_slides, total_slides))
-    # Chọn ngẫu nhiên các chỉ số slide không trùng nhau và sắp xếp theo thứ tự tăng dần
-    return sorted(random.sample(range(1, total_slides + 1), count))
-#Checkpoint test Question
+
+def get_total_slides(deck: str = "d1") -> int:
+    """Đọc động số lượng trang thực tế từ file PDF bằng PyMuPDF hoặc PyPDF, không hardcode số trang."""
+    candidates = list(SLIDES_DIR.glob(f"{deck}*.pdf"))
+    pdf_path = candidates[0] if candidates else (SLIDES_DIR / ("d1-slide-hackathon.pdf" if deck == "d1" else "d2-slide-hackathon.pdf"))
+    if pdf_path.exists():
+        try:
+            import pymupdf
+            doc = pymupdf.open(str(pdf_path))
+            return len(doc)
+        except Exception:
+            try:
+                import pypdf
+                reader = pypdf.PdfReader(str(pdf_path))
+                return len(reader.pages)
+            except Exception:
+                pass
+    return 29
+
+def generate_milestones(total_slides: Optional[int] = None, min_slides: int = 5, max_slides: int = 8, deck: str = "d1") -> List[int]:
+    """Sinh danh sách các mốc slide ngẫu nhiên (dynamic milestones) cho phiên học theo số trang thực tế của PDF."""
+    if total_slides is None:
+        total_slides = get_total_slides(deck)
+    # Đảm bảo các mốc chuẩn cốt lõi (như slide 6, 12 cho d1) luôn có mặt nếu file PDF có đủ trang
+    core_anchors = [p for p in ([6, 12] if deck == "d1" else [5, 11]) if p <= total_slides]
+    pool = [p for p in range(1, total_slides + 1) if p not in core_anchors]
+    target_count = random.randint(min(min_slides, total_slides), min(max_slides, total_slides))
+    needed_extra = max(0, target_count - len(core_anchors))
+    extra = random.sample(pool, min(needed_extra, len(pool)))
+    return sorted(core_anchors + extra)
+
+# Checkpoint mốc ngẫu nhiên sinh động cho từng bộ slide, tính động theo số trang thực tế của PDF
 KEY_MILESTONES = {
-    "d1": generate_milestones(total_slides=30, min_slides=5, max_slides=10),
-    "d2": generate_milestones(total_slides=30, min_slides=5, max_slides=10)
+    "d1": generate_milestones(deck="d1"),
+    "d2": generate_milestones(deck="d2")
 }
 
 # ==============================================================================
@@ -114,7 +148,12 @@ class SemanticMisconceptionMatcher:
         text_lower = student_answer.lower()
         # Nếu học viên đang giải thích đúng với các từ khóa bản chất thì không coi là ngộ nhận
         correct_indicators = ["1.35", "hệ số", "sub-token", "song song", "softmax"]
-        if any(ci in text_lower for ci in correct_indicators) and not any(kw in text_lower for kw in ["1 từ = 1 token", "1 từ tiếng việt = 1 token", "120 token", "tuần tự"]):
+        bank_keywords = [
+            kw.lower()
+            for item in self.bank
+            for kw in item.get("keywords", [])
+        ]
+        if any(ci in text_lower for ci in correct_indicators) and not any(kw in text_lower for kw in bank_keywords):
             return None
 
         # 1. Semantic Similarity Search qua Vector Space
@@ -178,11 +217,18 @@ def load_preset_flows(file_path: Path = PRESET_FLOWS_FILE) -> Dict[str, Dict[int
 PRESET_FLOWS = load_preset_flows()
 
 class PedagogyService:
+    def get_milestones(self, deck: str = "d1", refresh: bool = False) -> List[int]:
+        """Lấy hoặc làm mới danh sách mốc checkpoints ngẫu nhiên cho session bài giảng theo số trang thực tế của PDF."""
+        if refresh or deck not in KEY_MILESTONES:
+            total_slides = get_total_slides(deck)
+            KEY_MILESTONES[deck] = generate_milestones(total_slides=total_slides, min_slides=5, max_slides=8, deck=deck)
+        return KEY_MILESTONES.get(deck, [6, 12])
+
     def is_key_milestone(self, deck: str, page: int) -> bool:
-        return page in KEY_MILESTONES.get(deck, [6, 12, 18, 22, 25])
+        return page in self.get_milestones(deck)
 
     def get_next_milestone(self, deck: str, page: int) -> Optional[int]:
-        milestones = KEY_MILESTONES.get(deck, [6, 12, 18, 22, 25])
+        milestones = self.get_milestones(deck)
         next_pages = [p for p in milestones if p > page]
         return next_pages[0] if next_pages else None
 
@@ -254,12 +300,64 @@ class PedagogyService:
                 ]
                 return primary
 
-        # 2. Fallback sang kho câu hỏi mẫu chuẩn hóa
-        deck_flow = PRESET_FLOWS.get(deck, PRESET_FLOWS["d1"])
+        # 2. Lấy câu hỏi mẫu hoặc sinh động từ slide_text & ngân hàng ngộ nhận nếu slide này chưa có mẫu
+        deck_flow = PRESET_FLOWS.get(deck, PRESET_FLOWS.get("d1", {}))
         flow = deck_flow.get(page)
         if not flow:
-            closest_page = max([p for p in deck_flow.keys() if p <= page], default=12)
-            flow = deck_flow[closest_page]
+            prior_candidates = [p for p in deck_flow.keys() if p < page]
+            prior_p = max(prior_candidates) if prior_candidates else (max(page - 1, 1) if page > 1 else None)
+
+            clean_lines = [line.strip() for line in (slide_text or "").split("\n") if line.strip()]
+            first_line = clean_lines[0] if clean_lines else f"Chủ đề trọng tâm Slide {page}"
+            summary_snippet = " ".join(clean_lines[1:4]) if len(clean_lines) > 1 else f"Nội dung và nguyên lý tại Slide {page}."
+
+            rel_misc = target_misconceptions[0] if target_misconceptions else None
+            misc_fault = rel_misc.get("faulty_assumption", "Hiểu nhầm nguyên lý hoặc áp dụng công thức sai lệch") if rel_misc else "Suy diễn cảm tính không dựa trên bài giảng"
+            misc_exp = rel_misc.get("explanation", "Nguyên lý kỹ thuật được xác thực trên bài giảng chính thống.") if rel_misc else "Nắm vững nguyên lý và điều kiện áp dụng."
+            misc_cit = rel_misc.get("citation", "T04-049") if rel_misc else "T04-049"
+
+            if level == 1:
+                q_stem = f"Tại Slide {page} ({first_line[:50]}): Đâu là nhận định phản ánh chính xác nhất bản chất nội dung này?"
+            elif level == 2:
+                q_stem = f"Vận dụng kiến thức Slide {page} ({first_line[:45]}): Khi giải quyết bài toán thực tế, nhận định nào sau đây là chuẩn xác?"
+            else:
+                q_stem = f"Phân tích chuyên sâu Slide {page} ({first_line[:45]}): Điểm cốt lõi nào cần tối ưu để khắc phục hạn chế hoặc rủi ro?"
+
+            flow = {
+                "title": f"Trang {page}: {first_line[:60]}",
+                "summary": summary_snippet[:200] or f"Khái niệm tại Slide {page}.",
+                "prior_page": prior_p,
+                "bridge_concept": f"Liên kết từ Slide {prior_p or 1} sang Slide {page}",
+                "bridge_note": f"Đối chiếu các nguyên lý trước đó để làm chủ nội dung Slide {page}.",
+                "citations": [misc_cit],
+                "ai_question": q_stem,
+                "options": [
+                    {
+                        "id": "A",
+                        "text": f"Đúng theo nguyên lý: {misc_exp[:140]}",
+                        "is_correct": True,
+                        "feedback": f"Chính xác! Bạn đã hiểu đúng bản chất nội dung Slide {page}."
+                    },
+                    {
+                        "id": "B",
+                        "text": f"Bẫy ngộ nhận: {misc_fault[:140]}",
+                        "is_correct": False,
+                        "feedback": f"Chưa chính xác: Đây là ngộ nhận phổ biến. Hãy xem lại nội dung tại Slide {page}."
+                    },
+                    {
+                        "id": "C",
+                        "text": f"Hiểu sai rằng toàn bộ cơ chế tại Slide {page} chỉ hoạt động tuần tự độc lập ngữ cảnh.",
+                        "is_correct": False,
+                        "feedback": f"Sai lầm kỹ thuật: Mô hình yêu cầu sự tương quan và xử lý dữ liệu chặt chẽ."
+                    },
+                    {
+                        "id": "D",
+                        "text": f"Bỏ qua các tham số và điều kiện biên được mô tả tại Slide {page}.",
+                        "is_correct": False,
+                        "feedback": f"Chưa đúng: Cần quan sát kỹ các tham số kỹ thuật tại Slide {page}."
+                    }
+                ]
+            }
 
         options = [
             QuestionOption(
@@ -321,8 +419,23 @@ class PedagogyService:
 
         return primary
 
+    def _record_evaluation_memory(self, student_id: str, page: int, result: AnswerEvaluationResponse):
+        """Tự động ghi nhận lỗi ngộ nhận hoặc kiến thức đã làm chủ vào bộ nhớ dài hạn LTM của học viên"""
+        try:
+            if result.diagnostic and result.diagnostic.is_misconception:
+                memory_service.record_misconception(student_id, page, result.diagnostic.faulty_assumption)
+            elif result.is_correct:
+                memory_service.record_mastery(student_id, page, f"Slide {page}")
+        except Exception as e:
+            print(f"[PedagogyService] Error updating memory: {e}")
+
     async def evaluate_answer(self, req: StudentAnswerRequest) -> AnswerEvaluationResponse:
-        """Đánh giá câu trả lời học viên bằng ReAct Pattern và thông số IRT 3PL Theta"""
+        """Đánh giá câu trả lời học viên bằng ReAct Pattern và cập nhật bộ nhớ nhận thức dài hạn LTM"""
+        result = await self._evaluate_answer_impl(req)
+        self._record_evaluation_memory(req.student_id, req.page, result)
+        return result
+
+    async def _evaluate_answer_impl(self, req: StudentAnswerRequest) -> AnswerEvaluationResponse:
         theta = float(req.theta) if req.theta is not None else 0.0
         item_a = float(req.item_a) if req.item_a is not None else 1.0
         item_b = float(req.item_b) if req.item_b is not None else 0.0
@@ -616,8 +729,15 @@ class PedagogyService:
                             p3pl_prob=theta_eval["p3pl_prob"]
                         )
 
-        # 4. Kiểm tra câu trả lời tự do có lý luận tốt (từ khóa cốt lõi)
-        is_correct = any(kw in text_lower for kw in ["1.3", "1.4", "hệ số", "sub-token", "vector", "song song", "softmax", "deterministic", "system prompt"])
+        # 4. Kiểm tra câu trả lời tự do có lý luận tốt (từ khóa cốt lõi kết hợp ngữ nghĩa đáp án đúng)
+        core_terms = ["1.3", "1.4", "hệ số", "sub-token", "vector", "song song", "softmax", "deterministic", "system prompt"]
+        if current_flow:
+            for opt in current_flow.get("options", []):
+                if opt.get("is_correct"):
+                    for w in re.findall(r"\w+", opt.get("text", "").lower()):
+                        if len(w) > 4 and w not in VIETNAMESE_STOP_WORDS and w not in core_terms:
+                            core_terms.append(w)
+        is_correct = any(kw in text_lower for kw in core_terms)
         theta_eval = evaluate_learner_by_theta(
             theta=theta,
             is_correct=is_correct,
@@ -707,7 +827,12 @@ class PedagogyService:
                 citations=rag_citations
             )
 
-        # 3. Ưu tiên gọi GPT-4o-mini qua OpenRouter kết hợp bối cảnh RAG
+        # 2.5. Ghi nhận lượt hỏi vào bộ nhớ ngắn hạn STM và trích xuất hồ sơ dài hạn LTM
+        memory_service.append_turn(req.student_id, "user", req.message)
+        memory_context = memory_service.get_memory_prompt_context(req.student_id, req.page)
+        conv_history = req.history if req.history else memory_service.get_recent_history(req.student_id)
+
+        # 3. Ưu tiên gọi GPT-4o-mini qua OpenRouter/OpenAI kết hợp bối cảnh RAG và Bộ nhớ ngữ cảnh STM / LTM
         if openrouter_service.is_available():
             llm_reply = await openrouter_service.chat_socratic(
                 deck=req.deck,
@@ -716,28 +841,30 @@ class PedagogyService:
                 question_text=q_text,
                 user_message=req.message,
                 transcript_context=transcript_context,
-                level=req.current_level
+                level=req.current_level,
+                conversation_history=conv_history,
+                memory_context=memory_context
             )
             if llm_reply:
+                memory_service.append_turn(req.student_id, "assistant", llm_reply)
                 return StudentChatResponse(
                     reply=llm_reply,
                     intent=intent,
-                    citations=rag_citations
+                    citations=rag_citations,
+                    memory_note=f"Đã liên kết bộ nhớ học tập (STM: {len(conv_history)} lượt | LTM: {req.student_id})"
                 )
 
         # 4. Fallback thông minh dựa trên ngữ cảnh Slide & Intent
         citations = rag_citations
         if intent == "example":
-            if req.page == 6:
-                reply = "📌 **Ví dụ thực tế**: Hệ chuyên gia kinh điển như hệ thống MYCIN trong y tế (dùng hàng nghìn luật IF-THEN do bác sĩ nạp thủ công để chẩn đoán nhiễm trùng máu). Khác với LLM ngày nay tự học phân phối xác suất từ hàng nghìn tỷ từ trên Internet, Hệ chuyên gia bắt buộc phải có chuyên gia con người 'cầm tay chỉ việc' nạp từng luật trong miền tri thức hẹp."
-            elif req.page == 12:
-                reply = "📌 **Ví dụ thực tế**: Từ tiếng Anh 'apple' chỉ tính 1 token. Nhưng từ tiếng Việt 'quả táo' có dấu thanh, bộ BPE tokenizer chẻ thành 3 sub-token ('qu', 'ả', 'táo'). Vì vậy, một tài liệu 10.000 từ tiếng Việt khi gọi API OpenAI sẽ bị tính thành ~13.500 - 14.000 token, khiến chi phí hóa đơn API tăng ~35% so với tiếng Anh!"
-            elif req.page == 14:
-                reply = "📌 **Ví dụ thực tế**: Context Window giống như chiếc bàn làm việc. Nếu bạn muốn mô hình tóm tắt một cuốn sách dày 500 trang (~150.000 token) nhưng model chỉ có bàn chứa 32.000 token, những trang sách đầu tiên sẽ bị 'rơi khỏi bàn' và model hoàn toàn không đọc được chúng khi trả lời câu hỏi ở trang cuối."
-            elif req.page == 18:
-                reply = "📌 **Ví dụ thực tế**: Trong câu 'Con báo rượt theo con thỏ vì nó đói', cơ chế Self-Attention giúp mô hình tính toán trọng số tương quan song song giữa từ 'nó' với 'con báo' (đói) cao hơn hẳn so với 'con thỏ', giúp dịch chuẩn xác mà không bị nhầm lẫn như các mô hình duyệt tuần tự cũ."
+            example_from_flow = current_flow.get("example")
+            if example_from_flow:
+                reply = f"📌 **Ví dụ thực tế**: {example_from_flow}"
             else:
-                reply = f"📌 **Ví dụ thực tế cho Slide {req.page}**: {current_flow.get('summary') or 'Trong thực tế phát triển sản phẩm AI, việc nắm rõ cơ chế này giúp bạn tối ưu hóa cả về mặt chi phí và chất lượng phản hồi cho người dùng cuối.'}"
+                slide_lines = [l.strip() for l in (slide_text or "").splitlines() if l.strip()]
+                concept_snippet = slide_lines[0] if slide_lines else f"Slide {req.page}"
+                summary_text = current_flow.get('summary') or (" ".join(slide_lines[1:3]) if len(slide_lines) > 1 else "nguyên lý kỹ thuật của bài giảng")
+                reply = f"📌 **Ví dụ thực tế cho Slide {req.page} ({concept_snippet[:40]}):** Vận dụng trực tiếp nguyên tắc này vào bài toán thực tế: {summary_text}."
         elif intent == "concept":
             summary = current_flow.get("summary") or "Khái niệm này là nền tảng cốt lõi trong kiến trúc AI hiện đại."
             note = current_flow.get("bridge_note") or "Quan sát kỹ sự dịch chuyển giữa các slide bài giảng để thấy rõ bản chất."
@@ -748,10 +875,12 @@ class PedagogyService:
         else:
             reply = f"🤖 Tôi đang đồng hành cùng bạn tại Slide {req.page}. Bạn có thể bấm các nút gợi ý nhanh bên dưới để nhận ví dụ thực tế hoặc giải thích bản chất khái niệm nhé!"
 
+        memory_service.append_turn(req.student_id, "assistant", reply)
         return StudentChatResponse(
             reply=reply,
             intent=intent,
-            citations=citations
+            citations=citations,
+            memory_note=f"Bộ nhớ học viên: {req.student_id}"
         )
 
 pedagogy_service = PedagogyService()

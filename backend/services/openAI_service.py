@@ -7,7 +7,7 @@ Integrates: ReAct Reasoning, Bloom Taxonomy, Few-Shot Learning & Guardrails
 import json
 import os
 import sys
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Tuple
 import httpx
 import random
 from backend.config import (
@@ -36,43 +36,96 @@ class OpenRouterService:
     def set_key(self, key: str):
         self.api_key = key.strip()
         os.environ["OPENROUTER_API_KEY"] = self.api_key
+        os.environ["OPENAI_API_KEY"] = self.api_key
         # Also persist to .env
         try:
             lines = []
-            found = False
+            found_router = False
+            found_ai = False
             if ENV_FILE.exists():
                 for line in ENV_FILE.read_text(encoding="utf-8").splitlines():
                     if line.startswith("OPENROUTER_API_KEY="):
                         lines.append(f"OPENROUTER_API_KEY={self.api_key}")
-                        found = True
+                        found_router = True
+                    elif line.startswith("OPENAI_API_KEY="):
+                        lines.append(f"OPENAI_API_KEY={self.api_key}")
+                        found_ai = True
                     else:
                         lines.append(line)
-            if not found:
+            if not found_router:
                 lines.append(f"OPENROUTER_API_KEY={self.api_key}")
+            if not found_ai:
+                lines.append(f"OPENAI_API_KEY={self.api_key}")
             ENV_FILE.write_text("\n".join(lines), encoding="utf-8")
         except Exception as e:
             print(f"[OpenRouterService] Error writing to .env: {e}")
 
     def get_api_key(self) -> str:
-        if not self.api_key or self.api_key.startswith("sk-5Y"):
-            self.api_key = os.getenv("OPENROUTER_API_KEY", "")
-            if not self.api_key and ENV_FILE.exists():
-                try:
-                    for line in ENV_FILE.read_text(encoding="utf-8").splitlines():
-                        if line.startswith("OPENROUTER_API_KEY="):
-                            self.api_key = line.split("=", 1)[1].strip().strip("'\"")
-                            os.environ["OPENROUTER_API_KEY"] = self.api_key
-                            break
-                except Exception:
-                    pass
-        return self.api_key
+        if self.api_key and len(self.api_key) > 10 and not self.api_key.startswith("sk-5Y"):
+            return self.api_key
+
+        # Thử đọc từ biến môi trường
+        key = os.getenv("OPENROUTER_API_KEY", "") or os.getenv("OPENAI_API_KEY", "")
+        if key and len(key) > 10 and not key.startswith("sk-5Y"):
+            self.api_key = key
+            return self.api_key
+
+        # Thử đọc từ .env
+        if ENV_FILE.exists():
+            try:
+                for line in ENV_FILE.read_text(encoding="utf-8").splitlines():
+                    line_clean = line.strip()
+                    if line_clean.startswith("#"):
+                        continue
+                    if line_clean.startswith("OPENROUTER_API_KEY=") or line_clean.startswith("OPENAI_API_KEY="):
+                        val = line_clean.split("=", 1)[1].strip().strip("'\"")
+                        if val and len(val) > 10 and not val.startswith("sk-5Y"):
+                            self.api_key = val
+                            os.environ["OPENROUTER_API_KEY"] = val
+                            os.environ["OPENAI_API_KEY"] = val
+                            return self.api_key
+            except Exception as e:
+                print(f"[OpenRouterService] Error reading .env: {e}")
+
+        return ""
+
+    def get_provider_and_key(self) -> Tuple[str, str, str, Dict[str, str]]:
+        """
+        Tự động nhận diện provider (OpenAI hay OpenRouter) dựa trên định dạng key:
+        - sk-or-*: OpenRouter (https://openrouter.ai/api/v1/chat/completions, model openai/gpt-4o-mini)
+        - sk-proj-* hoặc sk-*: OpenAI direct (https://api.openai.com/v1/chat/completions, model gpt-4o-mini)
+        """
+        key = self.get_api_key()
+        if not key:
+            return "", "", "", {}
+
+        if key.startswith("sk-or-"):
+            provider = "openrouter"
+            endpoint = "https://openrouter.ai/api/v1/chat/completions"
+            model = self.model if "/" in self.model else f"openai/{self.model}"
+            headers = {
+                "Authorization": f"Bearer {key}",
+                "Content-Type": "application/json",
+                "HTTP-Referer": "http://localhost:8000",
+                "X-Title": "VLearn Adaptive Tutor"
+            }
+        else:
+            provider = "openai"
+            endpoint = "https://api.openai.com/v1/chat/completions"
+            model = self.model.replace("openai/", "") if "openai/" in self.model else (self.model or "gpt-4o-mini")
+            headers = {
+                "Authorization": f"Bearer {key}",
+                "Content-Type": "application/json"
+            }
+
+        return provider, endpoint, model, headers
 
     def is_available(self) -> bool:
         # During automated tests, avoid calling external LLM backends.
         if os.environ.get("PYTEST_CURRENT_TEST") or "pytest" in sys.modules:
             return False
         key = self.get_api_key()
-        return bool(key and len(key) > 10)
+        return bool(key and len(key) > 10 and not key.startswith("sk-5Y"))
 
     async def generate_slide_question(
         self,
@@ -104,14 +157,12 @@ class OpenRouterService:
         # Yêu cầu LLM sinh câu hỏi với ĐỦ 4 PHƯƠNG ÁN (A, B, C, D)
         prompt += "\n\nQUY ĐỊNH BẮT BUỘC:\n1. Mỗi câu hỏi PHẢI CÓ ĐỦ 4 PHƯƠNG ÁN LỰA CHỌN (A, B, C, D) trong mảng 'options', trong đó có đúng 1 đáp án đúng (is_correct=true) và 3 đáp án bẫy ngộ nhận/nhiễu (is_correct=false) kèm lời giải thích feedback chi tiết.\n2. Trả về JSON thuần túy, không kèm markdown backticks hay giải thích bên ngoài."
 
-        headers = {
-            "Authorization": f"Bearer {self.api_key}",
-            "HTTP-Referer": "http://localhost:8000",
-            "X-Title": "VLearn Adaptive Tutor",
-            "Content-Type": "application/json"
-        }
+        provider, endpoint, model, headers = self.get_provider_and_key()
+        if not endpoint:
+            return None
+
         payload = {
-            "model": self.model,
+            "model": model,
             "messages": [
                 {"role": "system", "content": SOCRATIC_GENERATOR_SYSTEM_PROMPT.strip()},
                 {"role": "user", "content": prompt.strip()}
@@ -122,7 +173,7 @@ class OpenRouterService:
 
         try:
             async with httpx.AsyncClient(timeout=15.0) as client:
-                res = await client.post(self.endpoint, headers=headers, json=payload)
+                res = await client.post(endpoint, headers=headers, json=payload)
                 if res.status_code == 200:
                     raw_content = res.json()["choices"][0]["message"]["content"].strip()
                     # Clean json markdown tags if any
@@ -196,14 +247,12 @@ class OpenRouterService:
 
         from backend.services.analytics_service import evaluate_learner_by_theta, UPDATE_THETA_TOOL
 
-        headers = {
-            "Authorization": f"Bearer {self.api_key}",
-            "HTTP-Referer": "http://localhost:8000",
-            "X-Title": "VLearn Adaptive Tutor",
-            "Content-Type": "application/json"
-        }
+        provider, endpoint, model, headers = self.get_provider_and_key()
+        if not endpoint:
+            return None
+
         payload = {
-            "model": self.model,
+            "model": model,
             "messages": [
                 {"role": "system", "content": REACT_EVALUATOR_SYSTEM_PROMPT.strip()},
                 {"role": "user", "content": prompt.strip()}
@@ -215,7 +264,7 @@ class OpenRouterService:
 
         try:
             async with httpx.AsyncClient(timeout=15.0) as client:
-                res = await client.post(self.endpoint, headers=headers, json=payload)
+                res = await client.post(endpoint, headers=headers, json=payload)
                 if res.status_code == 200:
                     choice = res.json()["choices"][0]["message"]
                     parsed = {}
@@ -306,9 +355,11 @@ class OpenRouterService:
         question_text: str,
         user_message: str,
         transcript_context: str = "",
-        level: int = 1
+        level: int = 1,
+        conversation_history: Optional[List[Dict[str, Any]]] = None,
+        memory_context: str = ""
     ) -> Optional[str]:
-        """Tương tác đàm thoại Socratic kết hợp RAG từ Slide PDF và 700 đoạn transcript bài giảng"""
+        """Tương tác đàm thoại Socratic kết hợp RAG và bộ nhớ hội thoại đa lượt STM / LTM"""
         if not self.is_available():
             return None
 
@@ -322,6 +373,9 @@ Nhiệm vụ của bạn là giải thích trực quan, cung cấp ví dụ th�
 4. Luôn bám sát bối cảnh bài giảng và lời giảng của giảng viên (RAG Context). Nếu có trích dẫn từ transcript, có thể tự nhiên kèm mã [Txx-NNN] để người học tham khảo.
 5. Luôn giữ phong cách thân thiện, súc tích, khuyến khích học viên tự tin suy luận.
 """
+        if memory_context:
+            sys_prompt += f"\n\n{memory_context}\n"
+
         rag_section = f"""
 [BỐI CẢNH BÀI GIẢNG RAG]:
 - Slide {page} ({deck.upper()}) trích xuất:
@@ -342,29 +396,36 @@ Nhiệm vụ của bạn là giải thích trực quan, cung cấp ví dụ th�
 
 Hãy trả lời ngắn gọn (khoảng 3-5 câu), trực quan, đúng trọng tâm và đúng nguyên tắc sư phạm.
 """
-        headers = {
-            "Authorization": f"Bearer {self.api_key}",
-            "HTTP-Referer": "http://localhost:8000",
-            "X-Title": "VLearn Adaptive Tutor",
-            "Content-Type": "application/json"
-        }
+        provider, endpoint, model, headers = self.get_provider_and_key()
+        if not endpoint:
+            return None
+
+        messages = [{"role": "system", "content": sys_prompt.strip()}]
+        if conversation_history:
+            for turn in conversation_history[-6:]:
+                r = turn.get("role", "user")
+                c = turn.get("content", "").strip()
+                if c and r in ["user", "assistant"]:
+                    messages.append({"role": r, "content": c})
+
+        messages.append({"role": "user", "content": user_prompt.strip()})
+
         payload = {
-            "model": self.model,
-            "messages": [
-                {"role": "system", "content": sys_prompt.strip()},
-                {"role": "user", "content": user_prompt.strip()}
-            ],
+            "model": model,
+            "messages": messages,
             "temperature": 0.5,
             "max_tokens": 500
         }
 
         try:
             async with httpx.AsyncClient(timeout=15.0) as client:
-                res = await client.post(self.endpoint, headers=headers, json=payload)
+                res = await client.post(endpoint, headers=headers, json=payload)
                 if res.status_code == 200:
                     return res.json()["choices"][0]["message"]["content"].strip()
+                else:
+                    print(f"[LLMService] Chat socratic failed HTTP {res.status_code} ({provider}): {res.text[:200]}")
         except Exception as e:
-            print(f"[OpenRouterService] Chat socratic error: {e}")
+            print(f"[LLMService] Chat socratic connection error: {e}")
 
         return None
 

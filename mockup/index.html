@@ -29,6 +29,13 @@
         </select>
       </div>
 
+      <button id="btn-reroll-checkpoints" class="btn-reroll" title="Sinh ngẫu nhiên các trạm kiểm tra mới cho bài học">🎲 Trạm ngẫu nhiên</button>
+
+      <button id="btn-api-settings" class="btn-api-settings" title="Cài đặt OpenAI / OpenRouter API Key">
+        <span id="ai-status-dot" class="ai-status-dot"></span>
+        <span id="ai-status-label">AI Key</span>
+      </button>
+
       <div class="user-profile-chip">
         <span class="user-avatar-dot"></span>
         <span id="current-user-name" class="user-name-text">Học viên S0102</span>
@@ -353,7 +360,39 @@
     </div>
   </div>
 
-  <script src="data.js?v=2.9"></script>
-  <script src="app.js?v=2.9"></script>
+  <!-- MODAL CẤU HÌNH API KEY (OPENAI / OPENROUTER) -->
+  <div id="api-modal" class="auth-modal-overlay" style="display: none;">
+    <div class="auth-modal-card" style="max-width: 480px;">
+      <div class="auth-modal-header">
+        <div class="auth-logo-badge">🔑</div>
+        <h2 class="auth-modal-title">Cấu hình API Key AI</h2>
+        <p class="auth-modal-desc">Kết nối GPT-4o-mini qua OpenAI hoặc OpenRouter</p>
+      </div>
+
+      <div style="background: rgba(30,41,59,0.7); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 12px; margin-bottom: 16px; font-size: 0.85rem; color: #cbd5e1;">
+        <div id="api-modal-status-text" style="font-weight: 600; margin-bottom: 6px;">⚪ Đang kiểm tra trạng thái...</div>
+        <div style="font-size: 0.78rem; color: #94a3b8; line-height: 1.4;">
+          • Hỗ trợ cả <b>OpenAI API Key</b> (bắt đầu bằng <code>sk-proj-...</code> hoặc <code>sk-...</code>)<br/>
+          • Hoặc <b>OpenRouter API Key</b> (bắt đầu bằng <code>sk-or-v1-...</code>)
+        </div>
+      </div>
+
+      <form id="api-key-form">
+        <div class="form-field">
+          <label class="field-label" for="api-key-input">API Key</label>
+          <input type="password" id="api-key-input" class="auth-input" placeholder="Dán API key vào đây (sk-...)" required />
+        </div>
+        <div id="api-key-feedback" style="font-size: 0.82rem; margin-bottom: 12px; display: none;"></div>
+
+        <div style="display: flex; gap: 10px;">
+          <button type="button" id="btn-close-api-modal" class="btn-logout" style="flex: 1;">Đóng</button>
+          <button type="submit" id="btn-save-api-key" class="btn-auth-primary" style="flex: 2;">Lưu & Kết nối</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="data.js?v=3.0"></script>
+  <script src="app.js?v=3.0"></script>
 </body>
 </html>

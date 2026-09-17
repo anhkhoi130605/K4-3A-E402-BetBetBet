@@ -204,6 +204,33 @@ def test_theta_logging_options():
 
     print("[PASS] 10. Theta logging for user-selected options to logbythea.jsonl ok")
 
+def test_student_memory_system():
+    # 1. Gửi chat yêu cầu gợi ý/ví dụ
+    res = client.post("/api/chat/ask", json={
+        "student_id": "S_TEST_MEM",
+        "deck": "d1",
+        "page": 12,
+        "message": "Cho tôi ví dụ thực tế về token tiếng Việt",
+        "current_level": 1,
+        "history": []
+    })
+    assert res.status_code == 200
+    data = res.json()
+    assert "reply" in data
+    assert len(data["reply"]) > 10
+
+    # 2. Kiểm tra bộ nhớ STM và LTM qua API endpoint
+    mem_res = client.get("/api/student/S_TEST_MEM/memory")
+    assert mem_res.status_code == 200
+    mem_data = mem_res.json()
+    assert mem_data["student_id"] == "S_TEST_MEM"
+    assert "stm_conversation_history" in mem_data
+    assert len(mem_data["stm_conversation_history"]) >= 2
+    assert mem_data["stm_conversation_history"][-2]["role"] == "user"
+    assert mem_data["stm_conversation_history"][-1]["role"] == "assistant"
+    assert "ltm_profile" in mem_data
+    print("[PASS] 11. Student STM Working Memory & LTM Profile System ok")
+
 if __name__ == "__main__":
     test_health()
     test_slide_question()
@@ -215,5 +242,6 @@ if __name__ == "__main__":
     test_slide_image()
     test_auth()
     test_theta_logging_options()
-    print("\nSUCCESS: All 10+ verification tests passed perfectly!")
+    test_student_memory_system()
+    print("\nSUCCESS: All 11+ verification tests passed perfectly!")
 
