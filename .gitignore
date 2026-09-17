@@ -10,20 +10,62 @@ __pycache__/
 *$py.class
 *.so
 .pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
 
-# Environment Variables
+# Environment Variables & Secrets
 .env
-.env.local
+.env.*
+!.env.example
 *.env
 
-# IDE & OS
-.DS_Store
-Thumbs.db
+# IDE & Editor Files
 .vscode/
 .idea/
+*.sublime-workspace
+*.sublime-project
+*.swp
+*.swo
+*~
 
-# Node modules (if any)
+# Operating System Files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Node & Web
 node_modules/
+dist/
+build/
+.cache/
 
 # Logs & Temporary Files
 *.log
+*.tmp
+*.temp
+*.pid
+
+Data/
+data/
+Track/
+track/
+Untitled form.csv
+*.csv
+*.tsv
+*.xlsx
+*.parquet
+*.db
+*.sqlite
+*.sqlite3
+
+# Skills & Agents
+.agents/skills/
+.agents/
+SKILL.md
+skill.md
+**/SKILL.md
+**/skill.md
+skills-lock.json
+

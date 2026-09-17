@@ -4,109 +4,112 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>VLearn Adaptive AI Tutor</title>
-  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="styles.css?v=2.9">
 </head>
 <body>
 
-  <!-- Header gọn gàng -->
+  <!-- Header Frosted Glass & Engineering Tone -->
   <header class="header">
     <div class="header-left">
-      <span class="logo-icon">VL</span>
-      <span class="header-title">VLearn Adaptive Learning</span>
-    </div>
-
-    <!-- Tabs chuyển đổi giữa góc nhìn Học viên và Giảng viên (Tính năng 4) -->
-    <div class="view-switch">
-      <button id="tab-student-btn" class="switch-btn active">
-        🎓 Học viên (Slide & AI)
-      </button>
-      <button id="tab-instructor-btn" class="switch-btn">
-        👨‍🏫 Giảng viên (Dashboard & Can thiệp)
-      </button>
+      <div class="logo-box">
+        <span class="logo-icon">VL</span>
+        <div class="logo-text-group">
+          <span class="header-title">VLearn Adaptive</span>
+          <span class="header-subtitle">Adaptive AI Companion</span>
+        </div>
+      </div>
+      <span id="header-role-badge" class="badge-role-header student">Học sinh</span>
     </div>
 
     <div class="header-right">
-      <select id="slide-deck-select" class="deck-select">
-        <option value="d1">Day 1: AI & LLM Foundation</option>
-        <option value="d2">Day 2: Xác định bài toán AI</option>
-      </select>
+      <div class="deck-select-wrapper">
+        <select id="slide-deck-select" class="deck-select" title="Chọn bộ bài giảng slide">
+          <option value="d1">Day 1: AI Foundation</option>
+          <option value="d2">Day 2: Bài toán AI</option>
+        </select>
+      </div>
+
+      <div class="user-profile-chip">
+        <span class="user-avatar-dot"></span>
+        <span id="current-user-name" class="user-name-text">Học viên S0102</span>
+      </div>
+
+      <button id="btn-logout" class="btn-logout" title="Đổi tài khoản đăng nhập">Thoát ⎋</button>
     </div>
   </header>
 
   <!-- NỘI DUNG CHÍNH -->
   <main class="main-container">
 
-    <!-- ================= VIEW 1: HỌC VIÊN (70% SLIDE - 30% AI) ================= -->
+    <!-- ================= VIEW 1: HỌC VIÊN (68% SLIDE - 32% AI) ================= -->
     <section id="student-view" class="view-pane active">
       <div class="split-70-30">
 
-        <!-- CỘT TRÁI (70%): SLIDE BÀI GIẢNG PDF TO RÕ NÉT -->
-        <div class="slide-pane">
-          <iframe id="slide-pdf-frame" class="slide-frame" src="../Data/vlearn-pack/slides/d1-slide-hackathon.pdf#page=12"></iframe>
+        <!-- CỘT TRÁI: BÀI GIẢNG SLIDE CUỘN TỰ NHIÊN (KÈM BỘ THU PHÓNG) -->
+        <div class="slide-pane-wrapper">
+          <div class="slide-pane-header">
+            <span class="slide-pane-title">
+              <svg class="icon-slide" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="14" x="3" y="3" rx="2"/><path d="m9 8 7 4-7 4Z"/></svg>
+              Bài giảng Slide
+            </span>
+            <div class="slide-zoom-controls">
+              <span class="zoom-label">Thu phóng</span>
+              <div class="zoom-btn-group">
+                <button id="btn-zoom-out" class="btn-zoom" title="Thu nhỏ slide">－</button>
+                <span id="zoom-level-text" class="zoom-level-text">80%</span>
+                <button id="btn-zoom-in" class="btn-zoom" title="Phóng to slide">＋</button>
+              </div>
+              <button id="btn-zoom-fit" class="btn-zoom btn-zoom-fit" title="Khôi phục kích thước vừa vặn">Vừa vặn</button>
+            </div>
+          </div>
+          <div class="slide-pane" id="slide-scroll-container">
+            <!-- Các trang slide sẽ được hiển thị liên tục để người học cuộn xem tự nhiên -->
+          </div>
         </div>
 
-        <!-- CỘT PHẢI (30%): AI COMPANION (THEO ĐÚNG SƠ ĐỒ TUẦN TỰ) -->
+        <!-- CỘT PHẢI (32%): AI SOCRATIC COMPANION (TỰ ĐỘNG THEO DÕI SLIDE NGƯỜI DÙNG ĐANG ĐỌC) -->
         <div class="ai-pane">
-          <!-- Header của AI: Cấp độ, Streak & Điều hướng câu hỏi -->
-          <div class="ai-header">
-            <div class="adaptive-status">
-              <span id="level-badge" class="level-tag">Level 1</span>
-              <span id="streak-badge" class="streak-tag">🔥 Chuỗi đúng: 0/2</span>
-            </div>
-
-            <div class="q-controls">
-              <button id="btn-prev-q" class="mini-btn" title="Câu trước">◀</button>
-              <select id="question-select" class="mini-select">
-                <option value="6">Câu 1 (Slide 6)</option>
-                <option value="12" selected>Câu 2 (Slide 12)</option>
-                <option value="14">Câu 3 (Slide 14)</option>
-                <option value="18">Câu 4 (Slide 18)</option>
-                <option value="20">Câu 5 (Slide 20)</option>
-                <option value="22">Câu 6 (Slide 22)</option>
-                <option value="25">Câu 7 (Slide 25)</option>
-              </select>
-              <button id="btn-next-q" class="mini-btn" title="Câu sau">▶</button>
+          <!-- Thanh trạng thái AI tối giản (Tự động thích ứng khi người dùng lướt slide) -->
+          <div class="ai-header-minimal">
+            <div class="adaptive-meta-badges">
+              <span id="student-level-badge" class="level-badge level-1" title="Cấp độ nhận thức học viên (Adaptive Level)">🌱 Level 1 (Cơ bản)</span>
+              <span id="student-streak-badge" class="streak-badge" title="Chuỗi trả lời đúng liên tiếp để thăng cấp">🔥 0/2</span>
             </div>
           </div>
 
-          <!-- Nội dung hỏi đáp và chẩn đoán -->
-          <div class="ai-body">
-            <!-- Cầu nối tri thức (Bắc cầu lý thuyết từ slide trước) -->
-            <div id="bridge-card" class="bridge-card">
-              <div class="bridge-label" id="bridge-flow">Slide 6 ➔ Slide 12</div>
-              <div class="bridge-note" id="bridge-note">
-                Ở Slide 6, bạn đã biết mô hình sinh chuỗi theo 'token'. Sang Slide 12, giảng viên chỉ rõ Token là gì và tại sao tiếng Việt lại đặc biệt.
-              </div>
-            </div>
-
-            <!-- Thẻ câu hỏi tương tác -->
-            <div class="question-card">
-              <div id="question-title" class="question-title">
-                Đang tải câu hỏi liên kết...
-              </div>
-
-              <div id="options-container" class="options-container">
-                <!-- Nút A / B sẽ render ở đây -->
-              </div>
-
-              <!-- Phản hồi chẩn đoán Socratic / Misconception -->
-              <div id="diagnostic-feedback" class="diagnostic-feedback"></div>
-            </div>
-
-            <!-- Khung trao đổi & phản tư của học viên -->
-            <div class="chat-section">
-              <div class="chat-section-title">Trao đổi phản tư cùng AI:</div>
-              <div id="chat-messages" class="chat-messages">
-                <div class="chat-msg tutor">
-                  Khi bạn chuyển câu hỏi, slide bên trái sẽ chuyển trang tương ứng. Bạn hãy quan sát slide và trả lời để kiểm tra mức độ hiểu sâu nhé.
+          <!-- 2. KHUNG CHAT TOÀN DIỆN (1 KHUNG CUỘN DUY NHẤT, KHÔNG CHIA ĐÔI MÀN HÌNH) -->
+          <div class="chat-section">
+            <div id="chat-messages" class="chat-messages">
+              <!-- Thẻ câu hỏi tương tác (Nằm trong luồng chat, gộp thành 1 khối duy nhất, không tách 2 hộp) -->
+              <div id="checkpoint-card" class="chat-msg tutor question-msg" style="display: none;">
+                <!-- Dòng gợi nhớ lý thuyết tinh tế (gộp chung bên trong câu hỏi) -->
+                <div id="bridge-card" class="bridge-note-inline" style="display: none;">
+                  <span class="bridge-icon">💡</span>
+                  <span id="bridge-note" class="bridge-note-text"></span>
                 </div>
+
+                <!-- Tiêu đề câu hỏi -->
+                <div id="question-title" class="question-title"></div>
+
+                <!-- Nút A / B render tại đây -->
+                <div id="options-container" class="options-container"></div>
+
+                <!-- Chấm điểm, đánh giá & hướng dẫn ôn tập -->
+                <div id="evaluation-card" class="evaluation-card" style="display: none;"></div>
               </div>
             </div>
           </div>
 
-          <!-- Thanh nhập phản hồi tự do -->
+          <!-- 4. THANH GỢI Ý NHANH (LUÔN HIỂN THỊ CỐ ĐỊNH NGAY TRÊN Ô NHẬP, KHÔNG BỊ TRÔI) -->
+          <div class="chat-quick-suggestions">
+            <button type="button" class="quick-chip" data-prompt="Gợi ý thêm một chút nữa">💡 Gợi ý thêm</button>
+            <button type="button" class="quick-chip" data-prompt="Bản chất của khái niệm này là gì?">🔍 Bản chất là gì?</button>
+            <button type="button" class="quick-chip" data-prompt="Cho tôi một ví dụ thực tế trực quan">📌 Ví dụ thực tế</button>
+          </div>
+
+          <!-- 5. THANH NHẬP PHẢN HỒI (CỐ ĐỊNH DƯỚI ĐÁY) -->
           <div class="chat-bar">
-            <input type="text" id="chat-input-text" class="chat-input-text" placeholder="Gõ câu trả lời hoặc trao đổi cùng bot..." />
+            <input type="text" id="chat-input-text" class="chat-input-text" placeholder="Gõ câu hỏi hoặc trao đổi với AI... (Enter ↵)" />
             <button id="btn-send-chat" class="btn-send-chat">Gửi</button>
           </div>
         </div>
@@ -114,46 +117,57 @@
       </div>
     </section>
 
-    <!-- ================= VIEW 2: GIẢNG VIÊN (TÍNH NĂNG 4 TRONG SƠ ĐỒ) ================= -->
+    <!-- ================= VIEW 2: GIẢNG VIÊN (ĐƠN GIẢN, GỌN GÀNG) ================= -->
     <section id="instructor-view" class="view-pane">
       <div class="instructor-container">
-        <!-- Hàng 4 thẻ chỉ số tổng quan lớp -->
+        <!-- 4 thẻ KPI ngắn gọn -->
         <div class="kpi-grid">
-          <div class="kpi-card">
-            <div class="kpi-title">Điểm nghẽn lớn nhất (Khảo sát)</div>
+          <div class="kpi-card kpi-danger">
+            <div class="kpi-card-header">
+              <span class="kpi-title">Học viên kẹt áp dụng</span>
+              <span class="kpi-badge">Critical</span>
+            </div>
             <div class="kpi-num red">45.1%</div>
-            <div class="kpi-desc">Hiểu lý thuyết nhưng kẹt cách áp dụng vào bài tập</div>
+            <div class="kpi-desc">Hiểu lý thuyết nhưng khó làm bài tập</div>
           </div>
-          <div class="kpi-card">
-            <div class="kpi-title">Hiểu lơ mơ / Ngộ nhận</div>
+          <div class="kpi-card kpi-warning">
+            <div class="kpi-card-header">
+              <span class="kpi-title">Lỗi ngộ nhận</span>
+              <span class="kpi-badge">High</span>
+            </div>
             <div class="kpi-num orange">33.3%</div>
-            <div class="kpi-desc">Thường hiểu mơ hồ và không biết mình sai ở đâu</div>
+            <div class="kpi-desc">Hiểu mơ hồ, nhầm giả định cốt lõi</div>
           </div>
-          <div class="kpi-card">
-            <div class="kpi-title">Nhu cầu Productive Failure</div>
+          <div class="kpi-card kpi-success">
+            <div class="kpi-card-header">
+              <span class="kpi-title">Nhu cầu Socratic</span>
+              <span class="kpi-badge">Engaged</span>
+            </div>
             <div class="kpi-num green">76.9%</div>
-            <div class="kpi-desc">Học viên muốn thử làm trước rồi AI phân tích lỗi sai</div>
+            <div class="kpi-desc">Muốn AI hỏi ngược để hiểu bản chất</div>
           </div>
-          <div class="kpi-card">
-            <div class="kpi-title">AI cũ thiếu Socratic (Chatlog)</div>
-            <div class="kpi-num yellow">0.2%</div>
-            <div class="kpi-desc">Chỉ 28 / 13.494 lượt hỏi định hướng (90% lý thuyết 1 chiều)</div>
+          <div class="kpi-card kpi-accent">
+            <div class="kpi-card-header">
+              <span class="kpi-title">Số ca can thiệp</span>
+              <span class="kpi-badge">Active</span>
+            </div>
+            <div class="kpi-num yellow" id="kpi-override-count">1</div>
+            <div class="kpi-desc">Giảng viên đã ghi đè kịch bản</div>
           </div>
         </div>
 
-        <!-- Lưới phân tích & Bảng can thiệp -->
         <div class="instructor-grid">
-          <!-- Bảng Heatmap Điểm nghẽn Cả lớp -->
+          <!-- Bảng Heatmap điểm nghẽn của lớp -->
           <div class="inst-card">
             <div class="card-heading">
-              <span>🔥 Bảng Điểm Nghẽn & Ngộ Nhận Phổ Biến Của Lớp (Misconception Heatmap)</span>
+              <span>🔥 Điểm nghẽn phổ biến của lớp</span>
             </div>
             <table class="simple-table">
               <thead>
                 <tr>
-                  <th>Khái niệm / Lỗ hổng</th>
-                  <th>Số HV kẹt</th>
-                  <th>Tỷ lệ lớp</th>
+                  <th>Chủ đề ngộ nhận</th>
+                  <th>Số HV</th>
+                  <th>Tỷ lệ</th>
                   <th>Mức độ</th>
                 </tr>
               </thead>
@@ -163,17 +177,17 @@
             </table>
 
             <div class="card-heading" style="margin-top: 20px;">
-              <span>👥 Danh Sách Học Viên Cần Theo Dõi</span>
+              <span>👥 Danh sách học viên</span>
             </div>
             <table class="simple-table">
               <thead>
                 <tr>
                   <th>Mã HV</th>
                   <th>Cấp độ</th>
-                  <th>Chuỗi đúng</th>
+                  <th>Chuỗi</th>
                   <th>Lỗi gần nhất</th>
                   <th>Trạng thái</th>
-                  <th>Can thiệp</th>
+                  <th></th>
                 </tr>
               </thead>
               <tbody id="roster-body">
@@ -182,41 +196,38 @@
             </table>
           </div>
 
-          <!-- Trung tâm Can thiệp / Ghi đè chẩn đoán của Giảng viên -->
+          <!-- Can thiệp & ghi đè của GV -->
           <div class="inst-card override-panel">
             <div class="card-heading">
-              <span>🛠️ Can Thiệp & Điều Chỉnh Kịch Bản (Instructor Override)</span>
+              <span>🛠️ Can thiệp kịch bản Socratic</span>
             </div>
-            <p class="inst-desc">
-              Giảng viên có thể điều chỉnh lại chẩn đoán của Bot, gửi chỉ dẫn trực tiếp tới học viên, hoặc hạ cấp gợi ý (Scaffolding).
-            </p>
 
             <div class="form-group">
-              <label>Học viên được chọn:</label>
+              <label>Học viên:</label>
               <input type="text" id="override-student-id" class="form-input" value="S0448" readonly />
             </div>
 
             <div class="form-group">
-              <label>Lỗi ngộ nhận Bot vừa phát hiện:</label>
-              <input type="text" id="override-student-error" class="form-input" value="Cho rằng Attention đọc tuần tự từng từ" readonly />
+              <label>Lỗi hiện tại:</label>
+              <input type="text" id="override-student-error" class="form-input" value="Cho rằng Attention đọc tuần tự" readonly />
             </div>
 
             <div class="form-group">
-              <label>Hành động can thiệp (Action):</label>
+              <label>Hành động:</label>
               <select id="override-action-select" class="form-select">
-                <option value="relabel">Đổi nhãn: Học viên nhầm với cơ chế RNN, không phải LSTM</option>
-                <option value="scaffold">Hạ cấp độ: Yêu cầu Bot chia thành 3 sub-step nhỏ (Scaffolding)</option>
-                <option value="cleared">Xác nhận học viên đã hiểu bài (Clear Flag)</option>
+                <option value="relabel">Đổi nhãn: Hiểu đúng Self-Attention song song</option>
+                <option value="scaffold">Hạ cấp gợi ý (chia bước nhỏ)</option>
+                <option value="cleared">Đã đạt yêu cầu (xóa cờ cảnh báo)</option>
               </select>
             </div>
 
             <div class="form-group">
-              <label>Ghi chú riêng của Giảng viên:</label>
-              <textarea id="override-notes" class="form-textarea" rows="3" placeholder="Nhập lời dặn hoặc ghi chú riêng cho học viên..."></textarea>
+              <label>Ghi chú cho học viên:</label>
+              <textarea id="override-notes" class="form-textarea" rows="3" placeholder="Nhập lời dặn..."></textarea>
             </div>
 
             <button id="btn-submit-override" class="btn-primary">
-              💾 Lưu Can Thiệp & Cập Nhật Phiên Học
+              Lưu can thiệp
             </button>
           </div>
         </div>
@@ -225,7 +236,75 @@
 
   </main>
 
-  <script src="data.js"></script>
-  <script src="app.js"></script>
+  <!-- MODAL ĐĂNG NHẬP ĐƠN GIẢN, FROSTED GLASS -->
+  <div id="auth-modal" class="auth-overlay">
+    <div class="auth-card">
+      <div class="auth-card-header">
+        <div class="auth-logo-badge">VL</div>
+        <h2 class="auth-title">VLearn Adaptive</h2>
+        <p class="auth-subtitle">Nền tảng học tập thích ứng thông minh với AI Companion</p>
+      </div>
+
+      <!-- 2 nút chọn nhanh 1 chạm -->
+      <div class="quick-role-section">
+        <div class="quick-role-label">Chọn vai trò truy cập nhanh:</div>
+        <div class="quick-btn-row">
+          <button type="button" id="btn-quick-student" class="btn-quick student">
+            <span class="btn-quick-icon">🎓</span>
+            <div class="btn-quick-text">
+              <strong>Học viên</strong>
+              <small>Tài khoản S0102</small>
+            </div>
+          </button>
+          <button type="button" id="btn-quick-teacher" class="btn-quick teacher">
+            <span class="btn-quick-icon">👨‍🏫</span>
+            <div class="btn-quick-text">
+              <strong>Giảng viên</strong>
+              <small>ThS. Trần Nam</small>
+            </div>
+          </button>
+        </div>
+      </div>
+
+      <div class="auth-divider"><span>hoặc đăng nhập tài khoản</span></div>
+
+      <form id="auth-form" class="auth-form">
+        <div class="form-field">
+          <label class="field-label" for="auth-username">Tên đăng nhập</label>
+          <input type="text" id="auth-username" class="auth-input" placeholder="Tên đăng nhập (vd: hocvien)" required />
+        </div>
+        <div class="form-field">
+          <label class="field-label" for="auth-password">Mật khẩu</label>
+          <input type="password" id="auth-password" class="auth-input" placeholder="Mật khẩu" required />
+        </div>
+
+        <!-- Chỉ hiện khi đăng ký -->
+        <div id="register-fields" style="display: none;">
+          <div class="form-field">
+            <label class="field-label" for="auth-fullname">Họ và tên</label>
+            <input type="text" id="auth-fullname" class="auth-input" placeholder="Họ và tên" />
+          </div>
+          <div class="form-field">
+            <label class="field-label" for="auth-role-select">Vai trò</label>
+            <select id="auth-role-select" class="auth-input">
+              <option value="student">Vai trò: Học sinh</option>
+              <option value="teacher">Vai trò: Giáo viên</option>
+            </select>
+          </div>
+        </div>
+
+        <div id="auth-error-msg" class="auth-error"></div>
+
+        <button type="submit" id="btn-auth-submit" class="btn-auth-primary">Đăng nhập</button>
+
+        <div class="auth-switch-link">
+          <a href="#" id="link-toggle-auth">Chưa có tài khoản? Đăng ký ngay</a>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="data.js?v=2.9"></script>
+  <script src="app.js?v=2.9"></script>
 </body>
 </html>
