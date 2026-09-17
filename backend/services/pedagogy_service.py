@@ -3,7 +3,9 @@ Socratic Pedagogy & Misconception Diagnostic Service
 Implements Block 1 & Block 2 of Sequence Diagram
 """
 
-from typing import Dict, Any, Optional
+import json
+from pathlib import Path
+from typing import Dict, Any, Optional, List, Tuple
 from backend.models.schemas import (
     SlideQuestionResponse,
     QuestionOption,
@@ -14,208 +16,166 @@ from backend.models.schemas import (
     StudentChatRequest,
     StudentChatResponse
 )
-from backend.services.rag_service import rag_service
+from backend.services.rag_service import rag_service, VectorSpaceRAG
 from backend.services.openAI_service import openrouter_service
 from backend.services.analytics_service import evaluate_learner_by_theta
-from backend.config import STREAK_FOR_LEVEL_UP, MAX_ADAPTIVE_LEVEL
-
-# Danh sách các Slide Mốc kiến thức quan trọng cần kích hoạt câu hỏi (Spaced Retrieval Checkpoints)
+from backend.config import STREAK_FOR_LEVEL_UP, MAX_ADAPTIVE_LEVEL, MISCONCEPTIONS_FILE, PRESET_FLOWS_FILE
+import random
+def generate_milestones(total_slides: int = 30, min_slides: int = 5, max_slides: int = 10):
+    # Chọn ngẫu nhiên số lượng slide từ min đến max (tối đa không vượt quá tổng số slide hiện có)
+    count = random.randint(min_slides, min(max_slides, total_slides))
+    # Chọn ngẫu nhiên các chỉ số slide không trùng nhau và sắp xếp theo thứ tự tăng dần
+    return sorted(random.sample(range(1, total_slides + 1), count))
+#Checkpoint test Question
 KEY_MILESTONES = {
-    "d1": [6, 12, 18, 22, 25],
-    "d2": [5, 11, 20]
+    "d1": generate_milestones(total_slides=30, min_slides=5, max_slides=10),
+    "d2": generate_milestones(total_slides=30, min_slides=5, max_slides=10)
 }
 
-# Ngân hàng lỗi tư duy chuẩn hóa (Mined từ tutor_turns.csv và transcript bài giảng)
-MISCONCEPTION_BANK = [
-    {
-        "id": "misc-01",
-        "keywords": ["120 token", "1 từ = 1 token", "1 từ tiếng việt = 1 token", "bằng đúng", "giống tiếng anh"],
-        "faulty_assumption": "Đồng nhất 1 từ tiếng Việt với 1 token (như tiếng Anh)",
-        "citation": "T04-049",
-        "slide": "Slide Day 1 · Trang 12",
-        "review_slide": 12,
-        "explanation": "Tiếng Việt có dấu thanh và cấu trúc âm tiết ghép, bộ tokenizer tách từ tiếng Việt thành 1.3 - 1.4 token trung bình mỗi từ.",
-        "sub_question": "Nếu từ 'Học tập' bị tách thành các sub-token, thì 120 từ tiếng Việt sẽ tốn khoảng bao nhiêu token so với 120 từ tiếng Anh?"
-    },
-    {
-        "id": "misc-02",
-        "keywords": ["tuần tự", "trái sang phải", "từng từ một", "đọc tuần tự"],
-        "faulty_assumption": "Nghĩ rằng Transformer duyệt tuần tự từng từ như con người hay RNN/LSTM cũ",
-        "citation": "T06-086",
-        "slide": "Slide Day 1 · Trang 18",
-        "review_slide": 18,
-        "explanation": "Cơ chế Self-Attention trong Transformer cho phép TẤT CẢ các token nhìn nhau SONG SONG cùng lúc trong không gian toán học.",
-        "sub_question": "Nếu cơ chế là song song, ma trận Attention giữa các từ được tính toán đồng thời hay theo thứ tự thời gian?"
-    },
-    {
-        "id": "misc-03",
-        "keywords": ["không mất phí", "chỉ tính 120 từ", "cài sẵn trong server", "bỏ qua system prompt"],
-        "faulty_assumption": "Bỏ quên chi phí Input Token của System Prompt trong mỗi lượt gọi API",
-        "citation": "T04-089",
-        "slide": "Slide Day 1 · Trang 22",
-        "review_slide": 22,
-        "explanation": "Mỗi request gửi lên API đều phải gửi kèm toàn bộ System Prompt (chỉ thị nền tảng), do đó System Prompt được tính phí input cho MỌI câu chat.",
-        "sub_question": "Nếu có 10.000 request/ngày, thì phần System Prompt dài 250 từ sẽ bị nhân lên bao nhiêu lần trong tổng hóa đơn API?"
-    }
-]
+# ==============================================================================
+# SEMANTIC MISCONCEPTION ENGINE (Tách dữ liệu ra ngoài & Semantic Vector Matching)
+# ==============================================================================
+class SemanticMisconceptionMatcher:
+    """
+    Bộ máy quản lý và so khớp ngộ nhận thông minh:
+    1. Tách dữ liệu ra file riêng: Đọc động từ Data/vlearn-pack/misconceptions.json.
+    2. Semantic Vector Matching: Dùng Vector Space Model (TF-IDF Cosine Similarity) index toàn bộ
+       ngữ nghĩa (faulty_assumption, explanation, semantic_examples).
+    3. LLM Integration: Truyền danh sách misconceptions vào prompt để LLM phân loại ngữ nghĩa.
+    4. Fallback an toàn: Hỗ trợ keywords nếu từ khóa khớp tuyệt đối.
+    """
+    def __init__(self, file_path: Path = MISCONCEPTIONS_FILE):
+        self.file_path = file_path
+        self.bank: List[Dict[str, Any]] = []
+        self.vector_engine: Optional[VectorSpaceRAG] = None
+        self.load_bank()
 
-# Chuỗi câu hỏi gợi nhớ kết nối slide cũ chuẩn hóa 4 đáp án (A, B, C, D)
-PRESET_FLOWS = {
-    "d1": {
-        6: {
-            "title": "Trang 6: 1980 - Hệ chuyên gia (Expert System)",
-            "summary": "AI đổi chiến lược: thôi theo đuổi trí tuệ tổng quát (AGI) và tập trung giải thật tốt một miền hẹp bằng cách mã hóa tri thức chuyên gia thành luật.",
-            "prior_page": None,
-            "bridge_concept": "Lịch sử AI: Chuyển dịch từ trí tuệ tổng quát sang giải bài toán hẹp",
-            "bridge_note": "Giai đoạn 1980 đánh dấu sự ra đời của Hệ chuyên gia (Expert System), thay vì cố giải mọi bài toán thì tập trung mã hóa tri thức chuyên gia thành các tập luật IF-THEN trong một miền xác định.",
-            "citations": ["T06-022", "T04-047"],
-            "ai_question": "Theo Slide 6, bước chuyển chiến lược quan trọng của ngành AI vào năm 1980 dẫn đến sự ra đời của Hệ chuyên gia (Expert System) là gì?",
-            "options": [
-                {"id": "A", "text": "Thôi theo đuổi trí tuệ tổng quát và tập trung giải thật tốt một miền bài toán hẹp bằng cách mã hóa tri thức chuyên gia thành luật.", "is_correct": True, "feedback": "Chính xác! Slide 6 nêu rõ: AI đổi chiến lược sang mã hóa tri thức chuyên gia thành luật (rules) để giải quyết thật tốt một miền hẹp."},
-                {"id": "B", "text": "Từ bỏ hoàn toàn máy tính điện tử và chuyển sang nghiên cứu mô phỏng sinh học tế bào nơ-ron sống.", "is_correct": False, "feedback": "Chưa chính xác: AI thập niên 1980 áp dụng lập trình ký hiệu (symbolic AI) và tập luật trên máy tính, không từ bỏ máy tính điện tử."},
-                {"id": "C", "text": "Chuyển sang huấn luyện các mô hình ngôn ngữ lớn (LLM) hàng tỷ tham số tự động cào dữ liệu Internet.", "is_correct": False, "feedback": "Sai mốc lịch sử: LLM và Internet bùng nổ nhiều thập kỷ sau đó (2017+ Transformer, 2022 ChatGPT). Năm 1980 là kỷ nguyên của luật tay (handcrafted rules)."},
-                {"id": "D", "text": "Tập trung xây dựng hệ thống trí tuệ nhân tạo toàn năng (AGI) có thể tự động trả lời mọi câu hỏi thuộc mọi lĩnh vực cùng lúc.", "is_correct": False, "feedback": "Sai lầm: Ngược lại, chính vì theo đuổi trí tuệ tổng quát gặp bế tắc (mùa đông AI) nên năm 1980 ngành AI mới thu hẹp phạm vi về một miền bài toán cụ thể."}
-            ]
-        },
-        12: {
-            "title": "Trang 12: Đơn vị Token & Vòng lặp Đoán Tiếp (Autoregressive)",
-            "summary": "Sinh văn bản = đoán token → nối vào câu → đoán tiếp. Đơn vị cơ bản là Token, tiếng Việt có dấu thanh tốn hệ số ~1.35x sub-token.",
-            "prior_page": 6,
-            "bridge_concept": "Hệ chuyên gia theo luật (Slide 6) ➔ LLM đoán Token theo xác suất (Slide 12)",
-            "bridge_note": "Ở Slide 6, Hệ chuyên gia xử lý theo tập luật IF-THEN cứng. Đến Slide 12, mô hình ngôn ngữ sinh văn bản bằng cách liên tục tính xác suất và đoán token tiếp theo (với tiếng Việt tốn ~1.35x sub-token).",
-            "citations": ["T04-049"],
-            "ai_question": "🔗 GỢI NHỚ TỪ SLIDE 6: Khác với Hệ chuyên gia (Slide 6) dùng luật cứng, mô hình ở Slide 12 sinh văn bản theo vòng lặp đoán token nào và tại sao tiếng Việt phải nhân hệ số sub-token?",
-            "options": [
-                {"id": "A", "text": "Vì mô hình xử lý trên không gian toán học (embedding vector), và tiếng Việt có dấu cần chẻ thành sub-tokens.", "is_correct": True, "feedback": "Xuất sắc! Bạn đã kết nối đúng từ nguyên lý dự đoán xác suất (Slide 6) sang cơ chế mã hóa toán học của Token (Slide 12)."},
-                {"id": "B", "text": "Vì tiếng Việt viết từ phải sang trái nên máy tính bắt buộc phải đổi sang token.", "is_correct": False, "feedback": "Chưa đúng: Tiếng Việt viết từ trái sang phải, việc chẻ token là do cấu trúc dấu thanh và âm tiết ghép."},
-                {"id": "C", "text": "Vì mỗi từ tiếng Việt luôn tương ứng đúng 1 token duy nhất giống hệt tiếng Anh nên không cần chẻ nhỏ.", "is_correct": False, "feedback": "Ngộ nhận kinh điển: Tiếng Việt có dấu thanh khiến bộ tokenizer BPE tách thành 1.3 - 1.4 sub-token/từ!"},
-                {"id": "D", "text": "Vì máy chủ AI chỉ lưu trữ bảng mã ASCII tiếng Anh, không thể đọc được ký tự Unicode tiếng Việt.", "is_correct": False, "feedback": "Sai lầm: Các bộ tokenizer hiện đại như BPE xử lý UTF-8 đa ngôn ngữ thông qua sub-token."}
-            ]
-        },
-        14: {
-            "title": "Trang 14: Context Window & Giới Hạn Ngữ Cảnh",
-            "summary": "Context Window là cửa sổ bối cảnh tối đa mà mô hình tiêu thụ trong một lần xử lý.",
-            "prior_page": 12,
-            "bridge_concept": "Hệ số Token tiếng Việt (Slide 12) ➔ Sức chứa Context Window (Slide 14)",
-            "bridge_note": "Nếu quên tính hệ số 1.35x ở Slide 12, bạn sẽ ước lượng sai sức chứa Context Window ở Slide 14.",
-            "citations": ["T04-051"],
-            "ai_question": "🔗 KẾT NỐI VỚI SLIDE 12: Một tài liệu tiếng Việt dài 80.000 từ đưa vào mô hình có Context Window 100.000 token, liệu có bị tràn context không?",
-            "options": [
-                {"id": "A", "text": "Có nguy cơ tràn! Vì theo Slide 12, 80.000 từ tiếng Việt nhân hệ số ~1.35x tương đương ~108.000 token, vượt ngưỡng 100.000 token.", "is_correct": True, "feedback": "Chính xác tuyệt đối! Đây là lỗi rất phổ biến khi không liên kết giữa đơn vị từ tiếng Việt và token."},
-                {"id": "B", "text": "Không tràn, vì 80.000 từ luôn luôn nhỏ hơn 100.000 token.", "is_correct": False, "feedback": "Sai lầm: 1 từ tiếng Việt không bằng 1 token! Cần nhân hệ số quy đổi ~1.35x."},
-                {"id": "C", "text": "Không tràn, vì mô hình sẽ tự động nén văn bản tiếng Việt lại còn 50.000 token.", "is_correct": False, "feedback": "Chưa chính xác: LLM không tự nén token đầu vào nếu không có thuật toán nén chuyên dụng."},
-                {"id": "D", "text": "Có tràn, nhưng chỉ do kích thước file tính bằng Megabyte (MB) quá lớn chứ không liên quan đến token.", "is_correct": False, "feedback": "Sai lầm: Giới hạn Context Window được đo bằng Token, không đo bằng dung lượng MB."}
-            ]
-        },
-        18: {
-            "title": "Trang 18: Kiến Trúc Transformer & Self-Attention",
-            "summary": "Xử lý song song, các token nhìn lẫn nhau trong ngữ cảnh, không bị quên như RNN/LSTM cũ.",
-            "prior_page": 14,
-            "bridge_concept": "Giới hạn đọc (Slide 14) ➔ Cơ chế 'nhìn song song' không bị quên (Slide 18)",
-            "bridge_note": "Mô hình cũ đọc tuần tự nên càng về sau càng quên; Transformer cho các token nhìn nhau song song.",
-            "citations": ["T06-086", "T06-127"],
-            "ai_question": "🔗 GỢI NHỚ TỪ SLIDE 6 & 14: Trước Transformer, các mô hình cũ đọc từng từ từ trái sang phải và hay quên context dài (Slide 14). Transformer giải quyết điểm nghẽn này thế nào?",
-            "options": [
-                {"id": "A", "text": "Cơ chế Self-Attention cho phép TẤT CẢ các token nhìn nhau SONG SONG cùng lúc trong không gian toán học, không duyệt tuần tự.", "is_correct": True, "feedback": "Rất chuẩn! Bạn đã nắm được bước đột phá của Self-Attention so với cơ chế tuần tự cũ."},
-                {"id": "B", "text": "Mô hình nâng cấp thêm thanh RAM trên GPU để nhớ tuần tự lâu hơn.", "is_correct": False, "feedback": "Chưa đúng: Bản chất là thay đổi kiến trúc thuật toán sang song song (Self-Attention), không phải chỉ tăng RAM."},
-                {"id": "C", "text": "Mô hình đảo ngược chiều đọc từ phải sang trái để đọc lại phần ngữ cảnh bị quên.", "is_correct": False, "feedback": "Sai lầm: Transformer không duyệt tuần tự xuôi hay ngược mà tính toán ma trận song song toàn bộ."},
-                {"id": "D", "text": "Mô hình loại bỏ hoàn toàn các từ đứng ở đầu câu và chỉ giữ lại 50 từ cuối cùng.", "is_correct": False, "feedback": "Chưa chính xác: Transformer tính toán trọng số tương đồng cho toàn bộ cửa sổ ngữ cảnh."}
-            ]
-        },
-        20: {
-            "title": "Trang 20: Cơ Chế Toán Học: Q, K, V & Softmax",
-            "summary": "Query, Key, Value biểu diễn vector; Softmax tính điểm tương đồng similarity score.",
-            "prior_page": 18,
-            "bridge_concept": "Các token nhìn nhau (Slide 18) ➔ Công thức toán học Q, K, V (Slide 20)",
-            "bridge_note": "Khái niệm trực quan 'nhìn nhau' ở Slide 18 được hiện thực hóa bằng ma trận Q nhân K qua hàm Softmax ở Slide 20.",
-            "citations": ["T06-130"],
-            "ai_question": "🔗 KẾT NỐI VỚI SLIDE 18: Trong câu 'Con mèo bắt chuột vì nó đói', máy tính làm sao biết 'nó' đang chú ý vào 'mèo' hay 'chuột'?",
-            "options": [
-                {"id": "A", "text": "Query ('nó') nhân với Key ('mèo') qua Softmax tạo ra Similarity Score cao nhất, gán Value tương ứng.", "is_correct": True, "feedback": "Tuyệt đỉnh! Bạn đã bắc cầu hoàn hảo từ khái niệm trực quan ở Slide 18 sang công thức Q-K-V ở Slide 20."},
-                {"id": "B", "text": "Mô hình tự động bốc thăm ngẫu nhiên từ nào đứng gần hơn.", "is_correct": False, "feedback": "Chưa đúng: Thuật toán tính ma trận tương đồng toán học có trọng số, không hề ngẫu nhiên."},
-                {"id": "C", "text": "Mô hình tra từ điển ngữ pháp tiếng Việt để tìm chủ ngữ gần nhất.", "is_correct": False, "feedback": "Sai lầm: Transformer không phân tích bằng luật ngữ pháp tĩnh mà tính toán không gian vector của Q và K."},
-                {"id": "D", "text": "Mô hình mặc định gán từ 'nó' cho danh từ đứng ngay liền kề trước đó là 'chuột'.", "is_correct": False, "feedback": "Chưa chính xác: Dựa trên ngữ cảnh 'đói', liên kết ngữ nghĩa Q và K cho trọng số cao với 'mèo' hơn."}
-            ]
-        },
-        22: {
-            "title": "Trang 22: Tham Số Temperature & Tính Tất Định",
-            "summary": "Temperature = 0: chọn token xác suất cao nhất (deterministic). Temperature = 1: sáng tạo hơn.",
-            "prior_page": 6,
-            "bridge_concept": "Dự đoán xác suất (Slide 6) ➔ Điều khiển nhiệt độ Temperature (Slide 22)",
-            "bridge_note": "Softmax ở Slide 20 tạo phân phối xác suất; Temperature ở Slide 22 sẽ làm dốc hoặc làm phẳng phân phối này.",
-            "citations": ["T04-089"],
-            "ai_question": "🔗 GỢI NHỚ TỪ SLIDE 6 & 20: Khi làm bài toán trích xuất hợp đồng tài chính chính xác tuyệt đối, bạn nên đặt Temperature bằng mấy?",
-            "options": [
-                {"id": "A", "text": "Đặt Temperature = 0 để mô hình luôn chọn token có xác suất cao nhất, đảm bảo tính tất định (deterministic).", "is_correct": True, "feedback": "Chính xác! Giảng viên đã nhấn mạnh điều này ở Slide 22 cho bài toán tài chính/y tế."},
-                {"id": "B", "text": "Đặt Temperature = 1 để mô hình tự do sáng tạo thêm điều khoản mới.", "is_correct": False, "feedback": "Sai lầm: Trong tài chính, temperature = 1 sẽ gây rủi ro hallucination rất lớn."},
-                {"id": "C", "text": "Đặt Temperature = 2 để mô hình suy luận đa chiều và phát hiện gian lận tốt hơn.", "is_correct": False, "feedback": "Sai lầm: Temperature quá cao sẽ làm phẳng phân phối xác suất, khiến kết quả lộn xộn, vô nghĩa."},
-                {"id": "D", "text": "Đặt Temperature bất kỳ vì tham số này chỉ ảnh hưởng đến tốc độ phản hồi chứ không ảnh hưởng nội dung.", "is_correct": False, "feedback": "Chưa chính xác: Temperature điều khiển trực tiếp phân phối xác suất Softmax chọn token tiếp theo."}
-            ]
-        },
-        25: {
-            "title": "Trang 25: Token Economy & Chi Phí Gọi API",
-            "summary": "Tổng chi phí = Input Token + Output Token. Output token lại được feed-forward làm input tiếp theo.",
-            "prior_page": 12,
-            "bridge_concept": "Hệ số Token tiếng Việt (Slide 12) + Feed-forward (Slide 18) ➔ Bài toán Chi phí (Slide 25)",
-            "bridge_note": "Bài toán thực tế: dự toán chi phí API cho doanh nghiệp dựa trên toàn bộ các slide trước.",
-            "citations": ["T06-154"],
-            "ai_question": "🔗 TỔNG HỢP TOÀN BỘ (SLIDE 12 ➔ 18 ➔ 25): Khi tính chi phí API cho chatbot tiếng Việt, điều gì xảy ra nếu bạn chỉ tính tiền số từ khách gõ?",
-            "options": [
-                {"id": "A", "text": "Sẽ bị hụt ngân sách nặng nề vì thiếu hệ số 1.35x tiếng Việt (Slide 12), token của System Prompt (Slide 22), và Output token feed-forward (Slide 25).", "is_correct": True, "feedback": "Chúc mừng bạn! Bạn đã hoàn thành trọn vẹn chuỗi bắc cầu lý thuyết xuyên suốt từ Slide 6 đến Slide 25!"},
-                {"id": "B", "text": "Không sao, nhà cung cấp API sẽ tự động miễn phí phần System Prompt.", "is_correct": False, "feedback": "Sai lầm: Nhà cung cấp tính phí input token cho TOÀN BỘ request, bao gồm cả System Prompt."},
-                {"id": "C", "text": "Chi phí sẽ giảm một nửa vì nhà cung cấp chỉ tính phí các token đầu ra (output token).", "is_correct": False, "feedback": "Sai lầm: API tính phí cho CẢ input token và output token, trong đó input token gửi kèm lịch sử chat lặp lại liên tục."},
-                {"id": "D", "text": "Ngân sách vẫn đúng vì 1 từ tiếng Việt luôn được tính đúng bằng 1 token khi quy đổi tài chính.", "is_correct": False, "feedback": "Sai lầm kinh điển: Tiếng Việt có dấu thanh tốn ~1.35x token/từ, không nhân hệ số sẽ làm sai lệch dự toán ngân sách."}
-            ]
-        }
-    },
-    "d2": {
-        5: {
-            "title": "Trang 5: RAG vs Fine-tuning",
-            "summary": "RAG truy xuất dữ liệu động thời gian thực; Fine-tuning thích ứng phong cách và tác vụ chuyên biệt.",
-            "prior_page": 1,
-            "bridge_concept": "Lý thuyết nền tảng (Day 1) ➔ Ứng dụng RAG thời gian thực (Day 2)",
-            "bridge_note": "Khi tài liệu doanh nghiệp thay đổi liên tục, RAG là giải pháp tối ưu thay vì tốn kém fine-tuning.",
-            "citations": ["T04-047"],
-            "ai_question": "🔗 KẾT NỐI VỚI DAY 1: Khi cần chatbot trả lời dựa trên tài liệu nội bộ mới cập nhật hàng ngày của công ty, bạn nên chọn giải pháp nào?",
-            "options": [
-                {"id": "A", "text": "Dùng RAG (Retrieval-Augmented Generation) để truy xuất dữ liệu động theo thời gian thực mà không cần huấn luyện lại mô hình.", "is_correct": True, "feedback": "Chính xác! RAG cho phép cập nhật tri thức tức thời với chi phí tối ưu."},
-                {"id": "B", "text": "Fine-tuning lại mô hình hàng ngày để nhồi tài liệu mới vào trọng số.", "is_correct": False, "feedback": "Sai lầm: Fine-tuning tốn kém, dễ gây quên kiến thức cũ và không kịp thời gian thực."},
-                {"id": "C", "text": "Tăng Context Window lên vô hạn để gửi toàn bộ kho tài liệu công ty vào mỗi request.", "is_correct": False, "feedback": "Chưa chính xác: Chi phí token sẽ bùng nổ và độ trễ latency rất cao."},
-                {"id": "D", "text": "Chỉ cần tăng Temperature = 1 để mô hình tự suy đoán thông tin nội bộ.", "is_correct": False, "feedback": "Sai lầm: Temperature cao gây hallucination nghiêm trọng."}
-            ]
-        },
-        11: {
-            "title": "Trang 11: Vector Embedding & Similarity Search",
-            "summary": "Biểu diễn ngữ nghĩa dưới dạng vector; tìm kiếm dựa trên khoảng cách Cosine Similarity.",
-            "prior_page": 5,
-            "bridge_concept": "Truy xuất RAG (Slide 5) ➔ Cơ chế toán học Vector Embedding (Slide 11)",
-            "bridge_note": "Để RAG tìm đúng đoạn văn bản, máy tính phải đổi từ ngữ sang tọa độ vector nhiều chiều.",
-            "citations": ["T06-022"],
-            "ai_question": "🔗 BẢN CHẤT TOÁN HỌC: Vector Embedding biểu diễn ngữ nghĩa của đoạn văn bản như thế nào?",
-            "options": [
-                {"id": "A", "text": "Biến đổi văn bản thành tọa độ vector nhiều chiều, các đoạn văn có nghĩa gần nhau sẽ có khoảng cách Cosine nhỏ.", "is_correct": True, "feedback": "Xuất sắc! Bạn đã nắm vững bản chất toán học của Vector Embedding."},
-                {"id": "B", "text": "Đếm tần suất xuất hiện của từng chữ cái A, B, C trong văn bản.", "is_correct": False, "feedback": "Sai lầm: Embedding biểu diễn không gian ngữ nghĩa, không phải đếm ký tự."},
-                {"id": "C", "text": "Mã hóa mỗi câu thành một số nguyên duy nhất từ 1 đến 1.000.", "is_correct": False, "feedback": "Chưa đúng: Vector embedding là chuỗi số thực nhiều chiều (ví dụ 1536 chiều)."},
-                {"id": "D", "text": "Dịch văn bản sang tiếng Anh rồi so khớp chuỗi ký tự thô.", "is_correct": False, "feedback": "Sai lầm: Embedding hoạt động trên không gian ngữ nghĩa độc lập ngôn ngữ."}
-            ]
-        },
-        20: {
-            "title": "Trang 20: Chunking & Reranking",
-            "summary": "Kỹ thuật phân đoạn tối ưu và tái xếp hạng độ liên quan của ngữ cảnh.",
-            "prior_page": 11,
-            "bridge_concept": "Tìm kiếm Vector (Slide 11) ➔ Tối ưu hóa Chunking & Reranking (Slide 20)",
-            "bridge_note": "Chunking đúng kích thước giúp không bị cắt đứt ngữ nghĩa; Reranking chọn lọc ngữ cảnh chuẩn nhất.",
-            "citations": ["T06-127"],
-            "ai_question": "🔗 TỐI ƯU HÓA RAG: Kỹ thuật Chunking (phân đoạn) kết hợp Reranking giải quyết điểm nghẽn gì?",
-            "options": [
-                {"id": "A", "text": "Chia nhỏ tài liệu thành các đoạn ngữ nghĩa vừa vặn và xếp hạng lại mức độ liên quan để chọn ra ngữ cảnh tối ưu nhất cho LLM.", "is_correct": True, "feedback": "Rất chuẩn! Đây là kỹ thuật cốt lõi để nâng cao độ chính xác của hệ thống RAG thực tế."},
-                {"id": "B", "text": "Tự động dịch văn bản sang 10 ngôn ngữ khác nhau để tăng dữ liệu.", "is_correct": False, "feedback": "Sai lầm: Chunking và Reranking là kỹ thuật chọn lọc ngữ cảnh, không phải dịch thuật."},
-                {"id": "C", "text": "Loại bỏ hoàn toàn các từ tiếng Việt để tiết kiệm chi phí token.", "is_correct": False, "feedback": "Chưa chính xác: Mục tiêu là giữ đúng ý nghĩa của tài liệu gốc."},
-                {"id": "D", "text": "Gửi toàn bộ tài liệu cho LLM đọc rồi sau đó mới tiến hành cắt đoạn.", "is_correct": False, "feedback": "Sai lầm: Chunking được thực hiện trước khi lưu trữ vào Vector DB."}
-            ]
-        }
-    }
-}
+    def load_bank(self):
+        """Nạp dữ liệu từ file misconceptions.json hoặc database"""
+        try:
+            if self.file_path.exists():
+                data = json.loads(self.file_path.read_text(encoding="utf-8"))
+                if isinstance(data, list) and len(data) > 0:
+                    self.bank = data
+                    self._build_vector_index()
+                    return
+        except Exception as e:
+            print(f"[MisconceptionMatcher] Error loading from {self.file_path}: {e}")
+            self.bank = []
+
+
+    def _build_vector_index(self):
+        """Xây dựng Vector Space Model trên tập dữ liệu ngộ nhận (chỉ index giả định sai & ví dụ ngộ nhận)"""
+        docs = {}
+        for item in self.bank:
+            doc_id = item["id"]
+            examples = " ".join(item.get("semantic_examples", []))
+            keywords = " ".join(item.get("keywords", []))
+            # Chỉ index giả định sai, ví dụ ngộ nhận và từ khóa ngộ nhận (không index lời giải thích đính chính)
+            text = f"{item.get('faulty_assumption', '')} {examples} {keywords}"
+            docs[doc_id] = {
+                "id": doc_id,
+                "text": text,
+                "item": item
+            }
+        self.vector_engine = VectorSpaceRAG(docs)
+
+    def reload(self):
+        """Hỗ trợ reload động khi cập nhật file hoặc DB tại runtime"""
+        self.load_bank()
+
+    def get_all(self) -> List[Dict[str, Any]]:
+        if not self.bank:
+            self.load_bank()
+        return self.bank
+
+    def find_by_assumption(self, faulty_assumption: str) -> Optional[Dict[str, Any]]:
+        """Tìm ngộ nhận dựa trên tên giả định sai do LLM trả về"""
+        if not faulty_assumption:
+            return None
+        target = faulty_assumption.lower().strip()
+        for item in self.bank:
+            if item.get("faulty_assumption", "").lower() in target or target in item.get("faulty_assumption", "").lower():
+                return item
+        # Thử semantic match
+        res = self.match(faulty_assumption, threshold=0.20)
+        return res[0] if res else None
+
+    def match(self, student_answer: str, threshold: float = 0.20) -> Optional[Tuple[Dict[str, Any], float]]:
+        """
+        Khớp ngộ nhận bằng Semantic Vector Matching kết hợp dự phòng từ khóa:
+        1. Kiểm tra nếu học viên đưa ra lập luận đúng (sub-token, 1.35x, song song...) thì không đánh đồng ngộ nhận
+        2. Tính Cosine Similarity trên Vector Space Model với các semantic examples & faulty assumptions
+        3. Kiểm tra keywords nếu có
+        """
+        if not student_answer or not self.bank:
+            return None
+
+        text_lower = student_answer.lower()
+        # Nếu học viên đang giải thích đúng với các từ khóa bản chất thì không coi là ngộ nhận
+        correct_indicators = ["1.35", "hệ số", "sub-token", "song song", "softmax"]
+        if any(ci in text_lower for ci in correct_indicators) and not any(kw in text_lower for kw in ["1 từ = 1 token", "1 từ tiếng việt = 1 token", "120 token", "tuần tự"]):
+            return None
+
+        # 1. Semantic Similarity Search qua Vector Space
+        if self.vector_engine:
+            results = self.vector_engine.search(student_answer, limit=1)
+            if results:
+                score, doc = results[0]
+                if score >= threshold:
+                    return doc["item"], float(score)
+
+        # 2. Keywords Fallback
+        for item in self.bank:
+            if any(kw.lower() in text_lower for kw in item.get("keywords", [])):
+                return item, 1.0
+
+        return None
+
+    def get_misconceptions_for_slide(self, page: int, deck: str = "d1", slide_text: str = "") -> List[Dict[str, Any]]:
+        """Lấy danh sách ngộ nhận mục tiêu của giáo viên tương ứng với slide hoặc chủ đề."""
+        matched = [
+            item for item in self.bank
+            if item.get("review_slide") == page or (isinstance(item.get("slide"), str) and f"Trang {page}" in item.get("slide", ""))
+        ]
+        if matched:
+            return matched
+
+        # Nếu chưa tìm thấy theo số trang, dùng Vector Engine để tìm ngộ nhận có ngữ nghĩa sát với slide_text
+        if slide_text and self.vector_engine:
+            results = self.vector_engine.search(slide_text, limit=2)
+            res_items = []
+            for score, doc in results:
+                if score > 0.05:
+                    item = doc.get("item")
+                    if item and item not in res_items:
+                        res_items.append(item)
+            if res_items:
+                return res_items
+
+        return self.bank[:2] if self.bank else []
+
+
+# Khởi tạo singleton matcher & export MISCONCEPTION_BANK
+misconception_matcher = SemanticMisconceptionMatcher()
+MISCONCEPTION_BANK = misconception_matcher.bank
+
+
+# Tải chuỗi câu hỏi gợi nhớ kết nối slide từ tệp cấu hình bên ngoài (Data/vlearn-pack/preset_flows.json)
+def load_preset_flows(file_path: Path = PRESET_FLOWS_FILE) -> Dict[str, Dict[int, Any]]:
+    """Đọc dữ liệu preset flows từ file json và chuẩn hóa số trang thành integer."""
+    if file_path.exists():
+        try:
+            raw_data = json.loads(file_path.read_text(encoding="utf-8"))
+            flows = {}
+            for deck, pages in raw_data.items():
+                flows[deck] = {int(p): flow for p, flow in pages.items()}
+            return flows
+        except Exception as e:
+            print(f"[PedagogyService] Lỗi khi tải preset flows từ {file_path}: {e}")
+    return {}
+
+PRESET_FLOWS = load_preset_flows()
 
 class PedagogyService:
     def is_key_milestone(self, deck: str, page: int) -> bool:
@@ -240,14 +200,18 @@ class PedagogyService:
 
         variants = []
 
-        # 1. Ưu tiên gọi GPT-4o-mini qua OpenRouter
+        # Lấy danh sách ngộ nhận mục tiêu của giáo viên cho slide này
+        target_misconceptions = misconception_matcher.get_misconceptions_for_slide(page=page, deck=deck, slide_text=slide_text)
+
+        # 1. Ưu tiên gọi GPT-4o-mini qua OpenRouter để tự động sinh câu hỏi tình huống chống học vẹt
         if openrouter_service.is_available():
             llm_res = await openrouter_service.generate_slide_question(
                 deck=deck,
                 page=page,
                 slide_text=slide_text,
                 prior_page=max(page - 1, 1) if page > 1 else None,
-                level=level
+                level=level,
+                misconceptions=target_misconceptions
             )
             if llm_res and "ai_question" in llm_res and "options" in llm_res:
                 options = [
@@ -450,7 +414,8 @@ class PedagogyService:
                 theta=theta,
                 item_a=item_a,
                 item_b=item_b,
-                item_c=item_c
+                item_c=item_c,
+                misconceptions=misconception_matcher.get_all()
             )
             if llm_eval:
                 if llm_eval.get("guardrail_triggered"):
@@ -479,7 +444,28 @@ class PedagogyService:
                 reasoning = llm_eval.get("reasoning")
 
                 diagnostic = None
-                if is_misc or faulty:
+                matched_item = None
+                if is_misc and faulty:
+                    matched_item = misconception_matcher.find_by_assumption(faulty)
+                elif not is_correct:
+                    # Semantic vector match trực tiếp từ câu trả lời
+                    match_res = misconception_matcher.match(req.answer_text)
+                    if match_res:
+                        matched_item, _ = match_res
+                        is_misc = True
+                        faulty = matched_item["faulty_assumption"]
+
+                if matched_item:
+                    citation_data = rag_service.get_citation(matched_item.get("citation", "T04-049"))
+                    diagnostic = MisconceptionDiagnostic(
+                        is_misconception=True,
+                        faulty_assumption=matched_item["faulty_assumption"],
+                        citation_id=matched_item.get("citation", "T04-049"),
+                        slide_reference=matched_item.get("slide", f"Slide {req.page}"),
+                        transcript_excerpt=citation_data["text"] if citation_data else matched_item.get("explanation", ""),
+                        socratic_guidance=matched_item.get("sub_question", hint)
+                    )
+                elif is_misc or faulty:
                     diagnostic = MisconceptionDiagnostic(
                         is_misconception=True,
                         faulty_assumption=faulty or "Giả định chưa chính xác",
@@ -488,18 +474,6 @@ class PedagogyService:
                         transcript_excerpt=slide_text[:200] if slide_text else "Tài liệu slide",
                         socratic_guidance=hint
                     )
-                elif not is_correct:
-                    for m in MISCONCEPTION_BANK:
-                        if any(kw in req.answer_text.lower() for kw in m["keywords"]):
-                            diagnostic = MisconceptionDiagnostic(
-                                is_misconception=True,
-                                faulty_assumption=m["faulty_assumption"],
-                                citation_id=m.get("citation", "T04-049"),
-                                slide_reference=m.get("slide", f"Slide {req.page}"),
-                                transcript_excerpt=m.get("explanation", ""),
-                                socratic_guidance=m.get("sub_question", hint)
-                            )
-                            break
 
                 review_rec = llm_eval.get("review_recommendation") or (
                     "Lập luận rất sắc bén! Bạn đã hiểu đúng bản chất và sẵn sàng học tiếp." if is_correct else (
@@ -527,23 +501,22 @@ class PedagogyService:
                     p3pl_prob=llm_eval.get("p3pl_prob")
                 )
 
-        # 2. Fallback heuristic Misconception Bank
+        # 2. Fallback heuristic Misconception Bank (Semantic Vector Matching + Keywords)
         text_lower = req.answer_text.lower()
         diagnostic = None
         matched_misc = None
-        for item in MISCONCEPTION_BANK:
-            if any(kw in text_lower for kw in item["keywords"]):
-                citation_data = rag_service.get_citation(item["citation"])
-                diagnostic = MisconceptionDiagnostic(
-                    is_misconception=True,
-                    faulty_assumption=item["faulty_assumption"],
-                    citation_id=item["citation"],
-                    slide_reference=item["slide"],
-                    transcript_excerpt=citation_data["text"] if citation_data else item["explanation"],
-                    socratic_guidance=f"{item['explanation']} {item['sub_question']}"
-                )
-                matched_misc = item
-                break
+        match_result = misconception_matcher.match(req.answer_text)
+        if match_result:
+            matched_misc, match_score = match_result
+            citation_data = rag_service.get_citation(matched_misc.get("citation", "T04-049"))
+            diagnostic = MisconceptionDiagnostic(
+                is_misconception=True,
+                faulty_assumption=matched_misc["faulty_assumption"],
+                citation_id=matched_misc.get("citation", "T04-049"),
+                slide_reference=matched_misc.get("slide", f"Slide {req.page}"),
+                transcript_excerpt=citation_data["text"] if citation_data else matched_misc.get("explanation", ""),
+                socratic_guidance=f"{matched_misc.get('explanation', '')} {matched_misc.get('sub_question', '')}"
+            )
 
         if diagnostic and matched_misc:
             rev_slide = matched_misc.get("review_slide", req.page)

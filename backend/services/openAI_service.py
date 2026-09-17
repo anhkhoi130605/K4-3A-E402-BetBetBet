@@ -7,7 +7,7 @@ Integrates: ReAct Reasoning, Bloom Taxonomy, Few-Shot Learning & Guardrails
 import json
 import os
 import sys
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 import httpx
 import random
 from backend.config import (
@@ -81,9 +81,10 @@ class OpenRouterService:
         slide_text: str,
         prior_page: Optional[int] = None,
         prior_concept: Optional[str] = None,
-        level: int = 1
+        level: int = 1,
+        misconceptions: Optional[List[Dict[str, Any]]] = None
     ) -> Optional[Dict[str, Any]]:
-        """Sinh câu hỏi Socratic thích ứng theo năng lực học viên bằng GPT-4o-mini"""
+        """Sinh câu hỏi Socratic thích ứng theo năng lực học viên bằng GPT-4o-mini chống học vẹt"""
         # During automated tests, avoid calling external LLM backends even if key is present
         if os.environ.get("PYTEST_CURRENT_TEST") or "pytest" in sys.modules:
             return None
@@ -96,7 +97,8 @@ class OpenRouterService:
             slide_text=slide_text,
             level=level,
             prior_page=prior_page,
-            prior_concept=prior_concept
+            prior_concept=prior_concept,
+            misconceptions=misconceptions
         )
 
         # Yêu cầu LLM sinh câu hỏi với ĐỦ 4 PHƯƠNG ÁN (A, B, C, D)
@@ -157,7 +159,8 @@ class OpenRouterService:
         theta: float = 0.0,
         item_a: float = 1.0,
         item_b: float = 0.0,
-        item_c: float = 0.2
+        item_c: float = 0.2,
+        misconceptions: Optional[list] = None
     ) -> Optional[Dict[str, Any]]:
         """
         Đánh giá câu trả lời của học viên bằng ReAct Pattern và Few-Shot Prompting.
@@ -175,7 +178,7 @@ class OpenRouterService:
         if not self.is_available():
             return None
 
-        # Bước 2: Tạo ReAct Prompt với Few-Shot Learning
+        # Bước 2: Tạo ReAct Prompt với Few-Shot Learning & Semantic Misconceptions
         prompt = build_evaluation_prompt(
             deck=deck,
             page=page,
@@ -187,7 +190,8 @@ class OpenRouterService:
             theta=theta,
             item_a=item_a,
             item_b=item_b,
-            item_c=item_c
+            item_c=item_c,
+            misconceptions=misconceptions
         )
 
         from backend.services.analytics_service import evaluate_learner_by_theta, UPDATE_THETA_TOOL

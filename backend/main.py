@@ -208,10 +208,10 @@ async def evaluate_answer(req: StudentAnswerRequest):
             req.item_c = float(params["c"])
 
         student = analytics_service.students.get(req.student_id)
-        if student and (req.theta is None or req.theta == 0.0):
+        if student and req.theta is None:
             req.theta = float(student.get("theta", 0.0))
 
-        theta_before = float(req.theta or 0.0)
+        theta_before = float(req.theta if req.theta is not None else 0.0)
         result = await pedagogy_service.evaluate_answer(req)
 
         # Cập nhật trạng thái học viên vào bộ nhớ dựa trên kết quả tính toán thông số theta
