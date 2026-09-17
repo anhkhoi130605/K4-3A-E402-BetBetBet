@@ -18,7 +18,8 @@ AI_LOG_DIR = BASE_DIR / "backend" / "ai-log"
 LOG_BY_THETA_FILE = AI_LOG_DIR / "logbythea.jsonl"
 MISCONCEPTIONS_FILE = DATA_DIR / "misconceptions.json"
 PRESET_FLOWS_FILE = DATA_DIR / "preset_flows.json"
-LEARNER_MEMORY_FILE = AI_LOG_DIR / "student_memories.json"
+SLIDES_DATA_FILE = DATA_DIR / "slides_data.json"
+STUDENT_MISCONCEPTIONS_FILE = AI_LOG_DIR / "student_misconceptions.json"
 
 
 # Load from .env if present

@@ -18,6 +18,7 @@ from backend.models.schemas import (
     StudentRosterItem,
     InstructorOverrideRequest
 )
+from backend.services.misconception_log_service import misconception_logger
 
 # ==============================================================================
 # IRT 3PL (3-Parameter Logistic) & THETA ASSESSMENT ENGINE

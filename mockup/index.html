@@ -243,6 +243,44 @@
               </button>
             </div>
           </div>
+
+          <!-- Bảng Chi tiết Nhật ký Ngộ nhận của Học sinh cho Giáo viên -->
+          <div class="inst-card full-width-card" style="margin-top: 16px;">
+            <div class="card-heading" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+              <div style="display: flex; align-items: center; gap: 10px;">
+                <span>📋 Nhật ký ngộ nhận của học sinh (Persistent Storage)</span>
+                <span id="misc-record-count" class="badge-count" style="font-size: 0.72rem; background: rgba(244,63,94,0.15); color: #fb7185; border: 1px solid rgba(244,63,94,0.3); padding: 2px 8px; border-radius: 9999px;">0 ngộ nhận</span>
+              </div>
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <select id="misc-filter-status" class="deck-select" style="padding: 4px 28px 4px 10px; font-size: 0.78rem;">
+                  <option value="">Tất cả trạng thái</option>
+                  <option value="unresolved">Chưa giải quyết (Cần can thiệp)</option>
+                  <option value="remediated">Đã tự sửa (Remediated)</option>
+                  <option value="teacher_intervened">GV đã can thiệp</option>
+                </select>
+                <button id="btn-refresh-misc-log" class="btn-zoom" style="padding: 5px 12px; font-size: 0.78rem; font-weight: 600;">Làm mới 🔄</button>
+              </div>
+            </div>
+            <div style="max-height: 240px; overflow-y: auto; margin-top: 10px;">
+              <table class="simple-table">
+                <thead>
+                  <tr>
+                    <th>Thời gian</th>
+                    <th>Học viên</th>
+                    <th>Vị trí</th>
+                    <th>Giả định sai (Ngộ nhận)</th>
+                    <th>Câu trả lời của HV</th>
+                    <th>Trạng thái</th>
+                    <th>Ghi chú GV</th>
+                    <th>Thao tác</th>
+                  </tr>
+                </thead>
+                <tbody id="misconception-log-body">
+                  <tr><td colspan="8" style="text-align: center; color: var(--text-muted); padding: 16px;">Đang tải danh sách ngộ nhận...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
 
         <!-- TAB 2: NHẬT KÝ AI & THETA (TỐI GIẢN) -->
