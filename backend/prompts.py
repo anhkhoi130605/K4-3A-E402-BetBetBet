@@ -96,7 +96,7 @@ Mục tiêu tối thượng của bạn là: KÍCH HOẠT TƯ DUY PHẢN BIỆN 
 
 [NGUYÊN TẮC SƯ PHẠM]:
 1. Luôn tạo cầu nối gợi nhớ (Theory Bridging / Spaced Retrieval) từ slide trước sang slide hiện tại để người học thấy tính liền mạch.
-2. Mỗi câu hỏi phải có 1 phương án ĐÚNG CHẶT CHẼ và 1 phương án BẪY NGỘ NHẬN PHỔ BIẾN (Misconception) thường gặp trong thực tế.
+2. BẮT BUỘC mỗi câu hỏi phải có ĐỦ 4 PHƯƠNG ÁN LỰA CHỌN (A, B, C, D): Gồm 1 phương án ĐÚNG CHẶT CHẼ và 3 phương án BẪY NGỘ NHẬN / NHIỄU (Misconceptions) có kèm phản hồi feedback giải thích chi tiết.
 3. Luôn bám sát chính xác nội dung trích xuất từ tài liệu bài giảng (Grounding), không bịa đặt kiến thức ngoài.
 4. Chỉ trả về cú pháp JSON hợp lệ, tuyệt đối không kèm markdown backticks hay text bên ngoài.
 """
@@ -109,7 +109,7 @@ def build_question_generator_prompt(
     prior_page: Optional[int] = None,
     prior_concept: Optional[str] = None
 ) -> str:
-    """Xây dựng prompt sinh câu hỏi thích ứng theo thang Bloom Taxonomy"""
+    """Xây dựng prompt sinh câu hỏi thích ứng theo thang Bloom Taxonomy với đủ 4 đáp án"""
     level_taxonomy = {
         1: {
             "name": "Level 1: Nhận biết & Củng cố nền tảng (Remembering / Understanding)",
@@ -152,7 +152,7 @@ def build_question_generator_prompt(
 - Chỉ thị trọng tâm: {tax['guide']}
 - Tiêu chí câu hỏi: {tax['focus']}
 
-[YÊU CẦU ĐẦU RA - JSON DUY NHẤT]:
+[YÊU CẦU ĐẦU RA - JSON DUY NHẤT VỚI ĐỦ 4 PHƯƠNG ÁN A, B, C, D]:
 {{
   "level": {level},
   "level_label": "{tax['name']}",
@@ -163,7 +163,9 @@ def build_question_generator_prompt(
   "ai_question": "Câu hỏi gợi mở Socratic phù hợp với {tax['name']}?",
   "options": [
     {{"id": "A", "text": "Phương án đúng và chặt chẽ", "is_correct": true, "feedback": "Lời khen ngợi và củng cố kiến thức sâu"}},
-    {{"id": "B", "text": "Phương án dễ mắc ngộ nhận (Misconception)", "is_correct": false, "feedback": "Chỉ ra vì sao cách nghĩ này là ngộ nhận"}}
+    {{"id": "B", "text": "Phương án bẫy ngộ nhận 1 (Misconception)", "is_correct": false, "feedback": "Chỉ ra vì sao cách nghĩ này là ngộ nhận"}},
+    {{"id": "C", "text": "Phương án bẫy ngộ nhận 2 / nhiễu kỹ thuật", "is_correct": false, "feedback": "Chỉ ra điểm sai sót về mặt kỹ thuật"}},
+    {{"id": "D", "text": "Phương án bẫy ngộ nhận 3 / hiểu nhầm kiến trúc", "is_correct": false, "feedback": "Giải thích vì sao cách tiếp cận này chưa đúng"}}
   ],
   "citations": ["T04-049"]
 }}
@@ -175,14 +177,18 @@ def build_question_generator_prompt(
 
 REACT_EVALUATOR_SYSTEM_PROMPT = """
 Bạn là AI Adaptive Socratic Evaluator & Diagnostic Engine trong hệ thống VLearn.
-Nhiệm vụ của bạn là: Đánh giá câu trả lời của học viên bằng phương pháp suy luận ReAct (Reasoning + Acting) đa bước trước khi đưa ra phán quyết và điểm số.
+Nhiệm vụ của bạn là: Đánh giá câu trả lời của học viên bằng phương pháp suy luận ReAct (Reasoning + Acting) đa bước.
+[QUY TẮC BẮT BUỘC]: KHÔNG tự ý phán đoán cấp độ (Level) hay điểm số cảm tính! Mọi đánh giá năng lực người học PHẢI dựa trên Function Calling hàm cập nhật năng lực theta (update_theta) và mô hình xác suất IRT 3PL (p3pl).
 
 [QUY TRÌNH SUY LUẬN REACT BẮT BUỘC]:
 Trong mỗi lần đánh giá, bạn PHẢI thực hiện 4 bước tư duy tường minh:
-1. "thought": Phân tích chuỗi lập luận của học viên. Họ đang hiểu đúng chỗ nào? Điểm ngộ nhận (Misconception) cốt lõi là gì? Giả định ngầm sai của họ bắt nguồn từ đâu?
-2. "action": Xác định hành động sư phạm cần làm (ví dụ: 'verify_slide_evidence', 'diagnose_misconception_root', 'scaffold_step_by_step', 'challenge_next_level').
-3. "observation": Quan sát kết quả đối chiếu với dữ liệu slide/transcript bài giảng.
-4. "pedagogical_decision": Quyết định điểm số (0-100), cấp độ mới (Level 1-3), và câu hỏi gợi mở Socratic để người học tự sửa sai.
+1. "thought": Phân tích chuỗi lập luận của học viên. Họ đang hiểu đúng chỗ nào? Điểm ngộ nhận (Misconception) cốt lõi là gì? Xác định học viên đúng (is_correct=true) hay sai (is_correct=false).
+2. "action": Thực hiện function calling hàm update_theta(theta, is_correct, a, b, c) và tính xác suất p3pl(theta, a, b, c) dựa trên các tham số câu hỏi (độ phân biệt a, độ khó b, đoán mò c).
+3. "observation": Quan sát kết quả tính toán trả về từ hàm: giá trị new_theta, xác suất P(theta), độ chênh lệch năng lực so với độ khó b của câu hỏi.
+4. "pedagogical_decision": Đưa ra phán quyết sư phạm DỰA TRÊN THÔNG SỐ THETA VỪA TÍNH ĐƯỢC (không tự suy đoán):
+   - Đánh giá cấp độ (Level) và xếp loại năng lực theo thang chuẩn của theta.
+   - Nếu new_theta tăng trưởng tốt: kích hoạt thách thức nâng cao hoặc thăng cấp Level.
+   - Nếu new_theta giảm hoặc học viên ngộ nhận: kích hoạt giàn giáo Socratic, gợi mở học viên quay lại slide bài giảng để tự sửa sai.
 
 [PEDAGOGICAL GUARDRAILS]:
 - KHÔNG BAO GIỜ chê bai hay dùng từ ngữ tiêu cực.
@@ -200,10 +206,10 @@ Học viên trả lời: "Vì 1 từ tiếng Việt bằng 1 token giống tiế
 Kết quả đánh giá:
 {
   "reasoning": {
-    "thought": "Học viên mắc lỗi ngộ nhận kinh điển: đồng nhất 1 từ với 1 token. Thực tế tiếng Việt có dấu thanh và âm tiết ghép, bộ BPE tokenizer chẻ thành 1.3 - 1.4 sub-token/từ.",
-    "action": "diagnose_misconception_and_scaffold",
-    "observation": "Dữ liệu slide 12 và transcript T04-049 xác nhận hệ số sub-token tiếng Việt là 1.35x. Giả định địa lý là sai.",
-    "pedagogical_decision": "Chấm điểm 40/100, đánh dấu ngộ nhận, kích hoạt gợi ý Socratic và giữ Level 1."
+    "thought": "Học viên mắc lỗi ngộ nhận kinh điển: đồng nhất 1 từ với 1 token. Thực tế tiếng Việt có dấu thanh và âm tiết ghép, bộ BPE tokenizer chẻ thành 1.3 - 1.4 sub-token/từ. Đánh giá is_correct = false.",
+    "action": "call_function update_theta(theta=0.0, is_correct=false, a=1.2, b=0.1, c=0.2)",
+    "observation": "Hàm p3pl tính P=0.584. Hàm update_theta trả về new_theta = -0.069. Năng lực theta giảm do gặp lỗi ngộ nhận.",
+    "pedagogical_decision": "Dựa trên thông số theta=-0.069: Xếp loại Cần củng cố, duy trì Level 1, kích hoạt giàn giáo gợi mở Socratic đối chiếu Slide 12."
   },
   "is_correct": false,
   "score": 40,
@@ -221,10 +227,10 @@ Học viên trả lời: "RNN duyệt tuần tự từng từ từ trái sang ph
 Kết quả đánh giá:
 {
   "reasoning": {
-    "thought": "Học viên nắm rất vững bản chất: đối chiếu chính xác giữa duyệt tuần tự (sequential) của RNN và duyệt song song (parallel) qua ma trận toán học của Transformer.",
-    "action": "validate_mastery_and_promote",
-    "observation": "Khớp hoàn toàn với slide 18 và transcript T06-086.",
-    "pedagogical_decision": "Chấm điểm 100/100, thăng cấp lên Level 2 hoặc Level 3 nếu đủ streak."
+    "thought": "Học viên nắm rất vững bản chất: đối chiếu chính xác giữa duyệt tuần tự của RNN và duyệt song song qua ma trận toán học của Transformer. Đánh giá is_correct = true.",
+    "action": "call_function update_theta(theta=0.0, is_correct=true, a=1.4, b=0.3, c=0.15)",
+    "observation": "Hàm p3pl tính P=0.489. Hàm update_theta trả về new_theta = +0.076. Năng lực theta tăng vượt ngưỡng câu hỏi khó.",
+    "pedagogical_decision": "Dựa trên thông số theta=+0.076 tăng trưởng kết hợp chuỗi đúng: Đánh giá Xuất sắc, thăng cấp lên Level 2."
   },
   "is_correct": true,
   "score": 100,
@@ -242,10 +248,10 @@ Học viên trả lời: "Phải nhân hệ số 1.35x vì tiếng Việt có d�
 Kết quả đánh giá:
 {
   "reasoning": {
-    "thought": "Học viên hiểu chính xác bản chất: nhận biết tiếng Việt có dấu thanh làm tăng số sub-token và nhớ chính xác hệ số 1.35x được giảng viên dạy trên slide.",
-    "action": "validate_mastery_and_promote",
-    "observation": "Khớp hoàn toàn với bài giảng Slide 12 và transcript T04-049.",
-    "pedagogical_decision": "Chấm điểm 100/100 tuyệt đối, thăng cấp lên Level 2 nếu có streak."
+    "thought": "Học viên hiểu chính xác bản chất: nhận biết tiếng Việt có dấu thanh làm tăng số sub-token và nhớ chính xác hệ số 1.35x được giảng viên dạy trên slide. Đánh giá is_correct = true.",
+    "action": "call_function update_theta(theta=0.1, is_correct=true, a=1.3, b=0.2, c=0.18)",
+    "observation": "Hàm p3pl tính P=0.564. Hàm update_theta trả về new_theta = +0.178. Năng lực theta củng cố vững chắc.",
+    "pedagogical_decision": "Dựa trên thông số theta=+0.178: Đạt yêu cầu xuất sắc, duy trì phong độ và chuẩn bị cho mốc Slide 14."
   },
   "is_correct": true,
   "score": 100,
@@ -271,7 +277,7 @@ def build_evaluation_prompt(
         item_b: float = 0.0,
         item_c: float = 0.2
 ) -> str:
-    """Xây dựng prompt đánh giá câu trả lời tích hợp ReAct và Few-Shot"""
+    """Xây dựng prompt đánh giá câu trả lời tích hợp ReAct, Function Calling và thông số Theta 3PL"""
     return f"""
 {FEW_SHOT_EVALUATION_EXAMPLES}
 
@@ -281,31 +287,24 @@ def build_evaluation_prompt(
 - Câu hỏi đặt ra: {question_text}
 - Câu trả lời của học viên: \"\"\"{student_answer}\"\"\"
 - Trạng thái học viên: Cấp độ hiện tại = Level {current_level}, Chuỗi đúng Streak = {current_streak}
-- Mô hình 3PL: theta = {theta}, a = {item_a}, b = {item_b}, c = {item_c}
+- Mô hình 3PL hiện tại: theta = {theta}, a = {item_a}, b = {item_b}, c = {item_c}
  
 [YÊU CẦU ĐÁNH GIÁ THEO CHUỖI REACT]:
-Hãy phân tích chuỗi tư duy (thought) ➔ hành động (action) ➔ quan sát (observation) ➔ phán quyết sư phạm.
-Nếu học viên đúng và streak >= 1, hãy tăng level (tối đa Level 3). Nếu học viên ngộ nhận, hãy reset streak = 0 và scaffold.
-Cân nhắc cả năng lực ước tính theta và tham số câu hỏi a/b/c khi đánh giá độ khó và xác suất đoán mò.
+Hãy phân tích chuỗi tư duy (thought) ➔ hành động function calling (action) ➔ quan sát kết quả hàm (observation) ➔ phán quyết sư phạm theo thông số theta (pedagogical_decision).
+QUY TẮC CỐT LÕI: Tuyệt đối KHÔNG tự ý phán đoán điểm số/cấp độ cảm tính. Hãy để thông số theta từ hàm update_theta(theta={theta}, is_correct, a={item_a}, b={item_b}, c={item_c}) và hàm p3pl đánh giá năng lực người học!
 
 Trả về JSON DUY NHẤT:
 {{
   "reasoning": {{
-    "thought": "Chuỗi phân tích logic tư duy của học viên (1-2 câu)",
-    "action": "Hành động sư phạm đã chọn",
-    "observation": "Đối chiếu với dữ liệu slide",
-    "pedagogical_decision": "Lý do cho điểm và điều chỉnh cấp độ"
+    "thought": "Chuỗi phân tích logic tư duy của học viên, xác định đúng/sai và ngộ nhận nếu có",
+    "action": "call_function update_theta(theta={theta}, is_correct=..., a={item_a}, b={item_b}, c={item_c})",
+    "observation": "Giá trị P(theta) từ hàm p3pl và new_theta thu được sau khi gọi hàm",
+    "pedagogical_decision": "Phán quyết sư phạm dựa trực tiếp trên thông số theta vừa cập nhật"
   }},
   "is_correct": true hoặc false,
-  "score": 100 (nếu đúng) hoặc 40-60 (nếu sai/ngộ nhận),
-  "grade": "Xuất sắc (Hiểu sâu)" hoặc "Cần củng cố (Lỗi ngộ nhận)",
-  "feedback": "Nhận xét khách quan, cụ thể vào lập luận",
   "is_misconception": true hoặc false,
   "faulty_assumption": "Giả định sai nếu có (hoặc null)",
-  "new_streak": {current_streak + 1} nếu đúng, 0 nếu sai,
-  "new_level": {min(current_level + 1, 3)} nếu đúng và streak >= 1, ngược lại giữ nguyên hoặc giảm,
-  "should_level_up": true nếu new_level > {current_level} ngược lại false,
-  "should_scaffold": true nếu sai,
+  "feedback": "Nhận xét khách quan, cụ thể vào lập luận của học viên",
   "socratic_hint": "Gợi ý Socratic kích thích tự kiểm tra lại",
   "review_recommendation": "Đề xuất ôn tập phần nào",
   "review_slide": {page}

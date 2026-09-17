@@ -16,6 +16,7 @@ from backend.models.schemas import (
 )
 from backend.services.rag_service import rag_service
 from backend.services.openAI_service import openrouter_service
+from backend.services.analytics_service import evaluate_learner_by_theta
 from backend.config import STREAK_FOR_LEVEL_UP, MAX_ADAPTIVE_LEVEL
 
 # Danh sách các Slide Mốc kiến thức quan trọng cần kích hoạt câu hỏi (Spaced Retrieval Checkpoints)
@@ -58,7 +59,7 @@ MISCONCEPTION_BANK = [
     }
 ]
 
-# Chuỗi câu hỏi gợi nhớ kết nối slide cũ
+# Chuỗi câu hỏi gợi nhớ kết nối slide cũ chuẩn hóa 4 đáp án (A, B, C, D)
 PRESET_FLOWS = {
     "d1": {
         6: {
@@ -70,8 +71,10 @@ PRESET_FLOWS = {
             "citations": ["T06-022", "T04-047"],
             "ai_question": "Bản chất của LLM là gì khi người dùng nhập câu hỏi vào?",
             "options": [
-                {"id": "A", "text": "Mô hình ghi nhớ toàn bộ từ vựng và tra cứu như cuốn từ điển tĩnh.", "is_correct": False, "feedback": "Chưa chính xác: LLM không phải là cuốn từ điển tra từ vựng tĩnh."},
-                {"id": "B", "text": "Mô hình tính toán xác suất thống kê để dự đoán và sinh ra từng token kế tiếp.", "is_correct": True, "feedback": "Chính xác! Ghi nhớ nguyên lý này để chuẩn bị bước sang Slide 12 về đơn vị tính Token."}
+                {"id": "A", "text": "Mô hình tính toán xác suất thống kê để dự đoán và sinh ra từng token kế tiếp trong không gian vector.", "is_correct": True, "feedback": "Chính xác! Ghi nhớ nguyên lý này để chuẩn bị bước sang Slide 12 về đơn vị tính Token."},
+                {"id": "B", "text": "Mô hình ghi nhớ toàn bộ từ vựng và tra cứu như một cuốn từ điển bách khoa tĩnh.", "is_correct": False, "feedback": "Chưa chính xác: LLM không phải là cuốn từ điển tra từ vựng tĩnh mà tính toán phân phối xác suất sinh token."},
+                {"id": "C", "text": "Mô hình suy luận logic tư duy có ý thức độc lập giống hệt như bộ não con người.", "is_correct": False, "feedback": "Sai lầm: LLM là mô hình toán học dự đoán chuỗi token tiếp theo dựa trên trọng số xác suất."},
+                {"id": "D", "text": "Mô hình dịch toàn bộ câu hỏi sang mã nhị phân 0-1 rồi tự động tìm kiếm câu trả lời trên Google.", "is_correct": False, "feedback": "Sai lầm: LLM hoạt động độc lập bằng mạng nơ-ron sinh token, không tự động tìm Google."}
             ]
         },
         12: {
@@ -84,7 +87,9 @@ PRESET_FLOWS = {
             "ai_question": "🔗 GỢI NHỚ TỪ SLIDE 6: Tại sao mô hình không đoán trực tiếp 'từ ngữ nguyên vẹn' mà phải chẻ nhỏ thành Token?",
             "options": [
                 {"id": "A", "text": "Vì mô hình xử lý trên không gian toán học (embedding vector), và tiếng Việt có dấu cần chẻ thành sub-tokens.", "is_correct": True, "feedback": "Xuất sắc! Bạn đã kết nối đúng từ nguyên lý dự đoán xác suất (Slide 6) sang cơ chế mã hóa toán học của Token (Slide 12)."},
-                {"id": "B", "text": "Vì tiếng Việt viết từ phải sang trái nên máy tính bắt buộc phải đổi sang token.", "is_correct": False, "feedback": "Chưa đúng: Tiếng Việt viết từ trái sang phải, việc chẻ token là do cấu trúc dấu thanh và âm tiết ghép."}
+                {"id": "B", "text": "Vì tiếng Việt viết từ phải sang trái nên máy tính bắt buộc phải đổi sang token.", "is_correct": False, "feedback": "Chưa đúng: Tiếng Việt viết từ trái sang phải, việc chẻ token là do cấu trúc dấu thanh và âm tiết ghép."},
+                {"id": "C", "text": "Vì mỗi từ tiếng Việt luôn tương ứng đúng 1 token duy nhất giống hệt tiếng Anh nên không cần chẻ nhỏ.", "is_correct": False, "feedback": "Ngộ nhận kinh điển: Tiếng Việt có dấu thanh khiến bộ tokenizer BPE tách thành 1.3 - 1.4 sub-token/từ!"},
+                {"id": "D", "text": "Vì máy chủ AI chỉ lưu trữ bảng mã ASCII tiếng Anh, không thể đọc được ký tự Unicode tiếng Việt.", "is_correct": False, "feedback": "Sai lầm: Các bộ tokenizer hiện đại như BPE xử lý UTF-8 đa ngôn ngữ thông qua sub-token."}
             ]
         },
         14: {
@@ -97,7 +102,9 @@ PRESET_FLOWS = {
             "ai_question": "🔗 KẾT NỐI VỚI SLIDE 12: Một tài liệu tiếng Việt dài 80.000 từ đưa vào mô hình có Context Window 100.000 token, liệu có bị tràn context không?",
             "options": [
                 {"id": "A", "text": "Có nguy cơ tràn! Vì theo Slide 12, 80.000 từ tiếng Việt nhân hệ số ~1.35x tương đương ~108.000 token, vượt ngưỡng 100.000 token.", "is_correct": True, "feedback": "Chính xác tuyệt đối! Đây là lỗi rất phổ biến khi không liên kết giữa đơn vị từ tiếng Việt và token."},
-                {"id": "B", "text": "Không tràn, vì 80.000 từ luôn luôn nhỏ hơn 100.000 token.", "is_correct": False, "feedback": "Sai lầm: 1 từ tiếng Việt không bằng 1 token! Cần nhân hệ số quy đổi ~1.35x."}
+                {"id": "B", "text": "Không tràn, vì 80.000 từ luôn luôn nhỏ hơn 100.000 token.", "is_correct": False, "feedback": "Sai lầm: 1 từ tiếng Việt không bằng 1 token! Cần nhân hệ số quy đổi ~1.35x."},
+                {"id": "C", "text": "Không tràn, vì mô hình sẽ tự động nén văn bản tiếng Việt lại còn 50.000 token.", "is_correct": False, "feedback": "Chưa chính xác: LLM không tự nén token đầu vào nếu không có thuật toán nén chuyên dụng."},
+                {"id": "D", "text": "Có tràn, nhưng chỉ do kích thước file tính bằng Megabyte (MB) quá lớn chứ không liên quan đến token.", "is_correct": False, "feedback": "Sai lầm: Giới hạn Context Window được đo bằng Token, không đo bằng dung lượng MB."}
             ]
         },
         18: {
@@ -110,7 +117,9 @@ PRESET_FLOWS = {
             "ai_question": "🔗 GỢI NHỚ TỪ SLIDE 6 & 14: Trước Transformer, các mô hình cũ đọc từng từ từ trái sang phải và hay quên context dài (Slide 14). Transformer giải quyết điểm nghẽn này thế nào?",
             "options": [
                 {"id": "A", "text": "Cơ chế Self-Attention cho phép TẤT CẢ các token nhìn nhau SONG SONG cùng lúc trong không gian toán học, không duyệt tuần tự.", "is_correct": True, "feedback": "Rất chuẩn! Bạn đã nắm được bước đột phá của Self-Attention so với cơ chế tuần tự cũ."},
-                {"id": "B", "text": "Mô hình nâng cấp thêm thanh RAM trên GPU để nhớ tuần tự lâu hơn.", "is_correct": False, "feedback": "Chưa đúng: Bản chất là thay đổi kiến trúc thuật toán sang song song (Self-Attention), không phải chỉ tăng RAM."}
+                {"id": "B", "text": "Mô hình nâng cấp thêm thanh RAM trên GPU để nhớ tuần tự lâu hơn.", "is_correct": False, "feedback": "Chưa đúng: Bản chất là thay đổi kiến trúc thuật toán sang song song (Self-Attention), không phải chỉ tăng RAM."},
+                {"id": "C", "text": "Mô hình đảo ngược chiều đọc từ phải sang trái để đọc lại phần ngữ cảnh bị quên.", "is_correct": False, "feedback": "Sai lầm: Transformer không duyệt tuần tự xuôi hay ngược mà tính toán ma trận song song toàn bộ."},
+                {"id": "D", "text": "Mô hình loại bỏ hoàn toàn các từ đứng ở đầu câu và chỉ giữ lại 50 từ cuối cùng.", "is_correct": False, "feedback": "Chưa chính xác: Transformer tính toán trọng số tương đồng cho toàn bộ cửa sổ ngữ cảnh."}
             ]
         },
         20: {
@@ -123,7 +132,9 @@ PRESET_FLOWS = {
             "ai_question": "🔗 KẾT NỐI VỚI SLIDE 18: Trong câu 'Con mèo bắt chuột vì nó đói', máy tính làm sao biết 'nó' đang chú ý vào 'mèo' hay 'chuột'?",
             "options": [
                 {"id": "A", "text": "Query ('nó') nhân với Key ('mèo') qua Softmax tạo ra Similarity Score cao nhất, gán Value tương ứng.", "is_correct": True, "feedback": "Tuyệt đỉnh! Bạn đã bắc cầu hoàn hảo từ khái niệm trực quan ở Slide 18 sang công thức Q-K-V ở Slide 20."},
-                {"id": "B", "text": "Mô hình tự động bốc thăm ngẫu nhiên từ nào đứng gần hơn.", "is_correct": False, "feedback": "Chưa đúng: Thuật toán tính ma trận tương đồng toán học có trọng số, không hề ngẫu nhiên."}
+                {"id": "B", "text": "Mô hình tự động bốc thăm ngẫu nhiên từ nào đứng gần hơn.", "is_correct": False, "feedback": "Chưa đúng: Thuật toán tính ma trận tương đồng toán học có trọng số, không hề ngẫu nhiên."},
+                {"id": "C", "text": "Mô hình tra từ điển ngữ pháp tiếng Việt để tìm chủ ngữ gần nhất.", "is_correct": False, "feedback": "Sai lầm: Transformer không phân tích bằng luật ngữ pháp tĩnh mà tính toán không gian vector của Q và K."},
+                {"id": "D", "text": "Mô hình mặc định gán từ 'nó' cho danh từ đứng ngay liền kề trước đó là 'chuột'.", "is_correct": False, "feedback": "Chưa chính xác: Dựa trên ngữ cảnh 'đói', liên kết ngữ nghĩa Q và K cho trọng số cao với 'mèo' hơn."}
             ]
         },
         22: {
@@ -136,7 +147,9 @@ PRESET_FLOWS = {
             "ai_question": "🔗 GỢI NHỚ TỪ SLIDE 6 & 20: Khi làm bài toán trích xuất hợp đồng tài chính chính xác tuyệt đối, bạn nên đặt Temperature bằng mấy?",
             "options": [
                 {"id": "A", "text": "Đặt Temperature = 0 để mô hình luôn chọn token có xác suất cao nhất, đảm bảo tính tất định (deterministic).", "is_correct": True, "feedback": "Chính xác! Giảng viên đã nhấn mạnh điều này ở Slide 22 cho bài toán tài chính/y tế."},
-                {"id": "B", "text": "Đặt Temperature = 1 để mô hình tự do sáng tạo thêm điều khoản mới.", "is_correct": False, "feedback": "Sai lầm: Trong tài chính, temperature = 1 sẽ gây rủi ro hallucination rất lớn."}
+                {"id": "B", "text": "Đặt Temperature = 1 để mô hình tự do sáng tạo thêm điều khoản mới.", "is_correct": False, "feedback": "Sai lầm: Trong tài chính, temperature = 1 sẽ gây rủi ro hallucination rất lớn."},
+                {"id": "C", "text": "Đặt Temperature = 2 để mô hình suy luận đa chiều và phát hiện gian lận tốt hơn.", "is_correct": False, "feedback": "Sai lầm: Temperature quá cao sẽ làm phẳng phân phối xác suất, khiến kết quả lộn xộn, vô nghĩa."},
+                {"id": "D", "text": "Đặt Temperature bất kỳ vì tham số này chỉ ảnh hưởng đến tốc độ phản hồi chứ không ảnh hưởng nội dung.", "is_correct": False, "feedback": "Chưa chính xác: Temperature điều khiển trực tiếp phân phối xác suất Softmax chọn token tiếp theo."}
             ]
         },
         25: {
@@ -149,7 +162,56 @@ PRESET_FLOWS = {
             "ai_question": "🔗 TỔNG HỢP TOÀN BỘ (SLIDE 12 ➔ 18 ➔ 25): Khi tính chi phí API cho chatbot tiếng Việt, điều gì xảy ra nếu bạn chỉ tính tiền số từ khách gõ?",
             "options": [
                 {"id": "A", "text": "Sẽ bị hụt ngân sách nặng nề vì thiếu hệ số 1.35x tiếng Việt (Slide 12), token của System Prompt (Slide 22), và Output token feed-forward (Slide 25).", "is_correct": True, "feedback": "Chúc mừng bạn! Bạn đã hoàn thành trọn vẹn chuỗi bắc cầu lý thuyết xuyên suốt từ Slide 6 đến Slide 25!"},
-                {"id": "B", "text": "Không sao, nhà cung cấp API sẽ tự động miễn phí phần System Prompt.", "is_correct": False, "feedback": "Sai lầm: Nhà cung cấp tính phí input token cho TOÀN BỘ request, bao gồm cả System Prompt."}
+                {"id": "B", "text": "Không sao, nhà cung cấp API sẽ tự động miễn phí phần System Prompt.", "is_correct": False, "feedback": "Sai lầm: Nhà cung cấp tính phí input token cho TOÀN BỘ request, bao gồm cả System Prompt."},
+                {"id": "C", "text": "Chi phí sẽ giảm một nửa vì nhà cung cấp chỉ tính phí các token đầu ra (output token).", "is_correct": False, "feedback": "Sai lầm: API tính phí cho CẢ input token và output token, trong đó input token gửi kèm lịch sử chat lặp lại liên tục."},
+                {"id": "D", "text": "Ngân sách vẫn đúng vì 1 từ tiếng Việt luôn được tính đúng bằng 1 token khi quy đổi tài chính.", "is_correct": False, "feedback": "Sai lầm kinh điển: Tiếng Việt có dấu thanh tốn ~1.35x token/từ, không nhân hệ số sẽ làm sai lệch dự toán ngân sách."}
+            ]
+        }
+    },
+    "d2": {
+        5: {
+            "title": "Trang 5: RAG vs Fine-tuning",
+            "summary": "RAG truy xuất dữ liệu động thời gian thực; Fine-tuning thích ứng phong cách và tác vụ chuyên biệt.",
+            "prior_page": 1,
+            "bridge_concept": "Lý thuyết nền tảng (Day 1) ➔ Ứng dụng RAG thời gian thực (Day 2)",
+            "bridge_note": "Khi tài liệu doanh nghiệp thay đổi liên tục, RAG là giải pháp tối ưu thay vì tốn kém fine-tuning.",
+            "citations": ["T04-047"],
+            "ai_question": "🔗 KẾT NỐI VỚI DAY 1: Khi cần chatbot trả lời dựa trên tài liệu nội bộ mới cập nhật hàng ngày của công ty, bạn nên chọn giải pháp nào?",
+            "options": [
+                {"id": "A", "text": "Dùng RAG (Retrieval-Augmented Generation) để truy xuất dữ liệu động theo thời gian thực mà không cần huấn luyện lại mô hình.", "is_correct": True, "feedback": "Chính xác! RAG cho phép cập nhật tri thức tức thời với chi phí tối ưu."},
+                {"id": "B", "text": "Fine-tuning lại mô hình hàng ngày để nhồi tài liệu mới vào trọng số.", "is_correct": False, "feedback": "Sai lầm: Fine-tuning tốn kém, dễ gây quên kiến thức cũ và không kịp thời gian thực."},
+                {"id": "C", "text": "Tăng Context Window lên vô hạn để gửi toàn bộ kho tài liệu công ty vào mỗi request.", "is_correct": False, "feedback": "Chưa chính xác: Chi phí token sẽ bùng nổ và độ trễ latency rất cao."},
+                {"id": "D", "text": "Chỉ cần tăng Temperature = 1 để mô hình tự suy đoán thông tin nội bộ.", "is_correct": False, "feedback": "Sai lầm: Temperature cao gây hallucination nghiêm trọng."}
+            ]
+        },
+        11: {
+            "title": "Trang 11: Vector Embedding & Similarity Search",
+            "summary": "Biểu diễn ngữ nghĩa dưới dạng vector; tìm kiếm dựa trên khoảng cách Cosine Similarity.",
+            "prior_page": 5,
+            "bridge_concept": "Truy xuất RAG (Slide 5) ➔ Cơ chế toán học Vector Embedding (Slide 11)",
+            "bridge_note": "Để RAG tìm đúng đoạn văn bản, máy tính phải đổi từ ngữ sang tọa độ vector nhiều chiều.",
+            "citations": ["T06-022"],
+            "ai_question": "🔗 BẢN CHẤT TOÁN HỌC: Vector Embedding biểu diễn ngữ nghĩa của đoạn văn bản như thế nào?",
+            "options": [
+                {"id": "A", "text": "Biến đổi văn bản thành tọa độ vector nhiều chiều, các đoạn văn có nghĩa gần nhau sẽ có khoảng cách Cosine nhỏ.", "is_correct": True, "feedback": "Xuất sắc! Bạn đã nắm vững bản chất toán học của Vector Embedding."},
+                {"id": "B", "text": "Đếm tần suất xuất hiện của từng chữ cái A, B, C trong văn bản.", "is_correct": False, "feedback": "Sai lầm: Embedding biểu diễn không gian ngữ nghĩa, không phải đếm ký tự."},
+                {"id": "C", "text": "Mã hóa mỗi câu thành một số nguyên duy nhất từ 1 đến 1.000.", "is_correct": False, "feedback": "Chưa đúng: Vector embedding là chuỗi số thực nhiều chiều (ví dụ 1536 chiều)."},
+                {"id": "D", "text": "Dịch văn bản sang tiếng Anh rồi so khớp chuỗi ký tự thô.", "is_correct": False, "feedback": "Sai lầm: Embedding hoạt động trên không gian ngữ nghĩa độc lập ngôn ngữ."}
+            ]
+        },
+        20: {
+            "title": "Trang 20: Chunking & Reranking",
+            "summary": "Kỹ thuật phân đoạn tối ưu và tái xếp hạng độ liên quan của ngữ cảnh.",
+            "prior_page": 11,
+            "bridge_concept": "Tìm kiếm Vector (Slide 11) ➔ Tối ưu hóa Chunking & Reranking (Slide 20)",
+            "bridge_note": "Chunking đúng kích thước giúp không bị cắt đứt ngữ nghĩa; Reranking chọn lọc ngữ cảnh chuẩn nhất.",
+            "citations": ["T06-127"],
+            "ai_question": "🔗 TỐI ƯU HÓA RAG: Kỹ thuật Chunking (phân đoạn) kết hợp Reranking giải quyết điểm nghẽn gì?",
+            "options": [
+                {"id": "A", "text": "Chia nhỏ tài liệu thành các đoạn ngữ nghĩa vừa vặn và xếp hạng lại mức độ liên quan để chọn ra ngữ cảnh tối ưu nhất cho LLM.", "is_correct": True, "feedback": "Rất chuẩn! Đây là kỹ thuật cốt lõi để nâng cao độ chính xác của hệ thống RAG thực tế."},
+                {"id": "B", "text": "Tự động dịch văn bản sang 10 ngôn ngữ khác nhau để tăng dữ liệu.", "is_correct": False, "feedback": "Sai lầm: Chunking và Reranking là kỹ thuật chọn lọc ngữ cảnh, không phải dịch thuật."},
+                {"id": "C", "text": "Loại bỏ hoàn toàn các từ tiếng Việt để tiết kiệm chi phí token.", "is_correct": False, "feedback": "Chưa chính xác: Mục tiêu là giữ đúng ý nghĩa của tài liệu gốc."},
+                {"id": "D", "text": "Gửi toàn bộ tài liệu cho LLM đọc rồi sau đó mới tiến hành cắt đoạn.", "is_correct": False, "feedback": "Sai lầm: Chunking được thực hiện trước khi lưu trữ vào Vector DB."}
             ]
         }
     }
@@ -215,7 +277,8 @@ class PedagogyService:
                     options=options,
                     citations=llm_res.get("citations") or preset_flow.get("citations", ["T04-049"]),
                     next_checkpoint=next_checkpoint,
-                    questions=[]
+                    questions=[],
+                    source="LLM (GPT-4o-mini)"
                 )
                 variants = [
                     QuestionVariant(
@@ -260,6 +323,7 @@ class PedagogyService:
             options=options,
             citations=flow["citations"],
             next_checkpoint=next_checkpoint,
+            source="preset",
             questions=[
                 QuestionVariant(
                     id="v1",
@@ -294,30 +358,33 @@ class PedagogyService:
         return primary
 
     async def evaluate_answer(self, req: StudentAnswerRequest) -> AnswerEvaluationResponse:
-        """Đánh giá câu trả lời học viên bằng GPT-4o-mini hoặc Misconception Bank kèm chấm điểm và hướng dẫn ôn tập"""
+        """Đánh giá câu trả lời học viên bằng ReAct Pattern và thông số IRT 3PL Theta"""
+        theta = float(req.theta) if req.theta is not None else 0.0
+        item_a = float(req.item_a) if req.item_a is not None else 1.0
+        item_b = float(req.item_b) if req.item_b is not None else 0.0
+        item_c = float(req.item_c) if req.item_c is not None else 0.2
+
         # 0. Nếu học viên click chọn phương án trắc nghiệm A/B đã có nhãn đúng/sai rõ ràng
         if req.is_option_correct is not None:
             is_correct = bool(req.is_option_correct)
-            score = 100 if is_correct else 40
-            grade = "Xuất sắc (Nắm vững bản chất)" if is_correct else "Cần củng cố (Lỗi ngộ nhận)"
-            new_streak = req.current_streak + 1 if is_correct else 0
-            new_level = min(req.current_level + 1, 3) if (is_correct and req.current_streak >= 1) else (
-                req.current_level if is_correct else max(req.current_level - 1, 1)
+            theta_eval = evaluate_learner_by_theta(
+                theta=theta,
+                is_correct=is_correct,
+                a=item_a,
+                b=item_b,
+                c=item_c,
+                current_level=req.current_level,
+                current_streak=req.current_streak
             )
-            should_level_up = is_correct and (new_level > req.current_level)
 
             thought = (
-                f"Học viên đã phân tích chính xác câu hỏi '{req.question_text or f'Slide {req.page}'}' và chọn phương án đúng bản chất."
+                f"Học viên đã phân tích chính xác câu hỏi '{req.question_text or f'Slide {req.page}'}' và chọn phương án đúng bản chất. Đánh giá is_correct = true."
                 if is_correct
-                else f"Học viên chọn phương án chứa bẫy ngộ nhận (Misconception) của Slide {req.page}."
+                else f"Học viên chọn phương án chứa bẫy ngộ nhận (Misconception) của Slide {req.page}. Đánh giá is_correct = false."
             )
-            action = "validate_mastery_and_promote" if is_correct else "diagnose_misconception_and_scaffold"
-            observation = "Khớp hoàn toàn với cơ sở lý thuyết bài giảng." if is_correct else "Lựa chọn này đi ngược lại nguyên lý vận hành được trình bày trên slide."
-            decision = (
-                f"Chấm 100/100 tuyệt đối, tăng streak lên {new_streak}" + (f", thăng cấp độ lên Level {new_level}." if should_level_up else ".")
-                if is_correct
-                else "Chấm 40/100, kích hoạt phản hồi Socratic gợi mở để học viên tự xem lại slide và sửa sai."
-            )
+            action = f"call_function update_theta(theta={theta}, is_correct={is_correct}, a={item_a}, b={item_b}, c={item_c})"
+            observation = theta_eval["reasoning_observation"]
+            decision = theta_eval["pedagogical_decision"]
 
             reasoning = {
                 "thought": thought,
@@ -345,19 +412,22 @@ class PedagogyService:
 
             return AnswerEvaluationResponse(
                 is_correct=is_correct,
-                score=score,
-                grade=grade,
+                score=theta_eval["score"],
+                grade=theta_eval["grade"],
                 feedback=feedback,
                 diagnostic=diagnostic,
-                new_streak=new_streak,
-                new_level=new_level,
-                should_level_up=should_level_up,
-                should_scaffold=not is_correct,
+                new_streak=theta_eval["new_streak"],
+                new_level=theta_eval["new_level"],
+                should_level_up=theta_eval["should_level_up"],
+                should_scaffold=theta_eval["should_scaffold"],
                 socratic_hint="Bạn đã nắm vững kiến thức! Hãy tiếp tục duy trì lập luận tốt ở các slide tiếp theo." if is_correct else f"Hãy nhìn lại Slide {req.page} để xem lý thuyết giải thích điều này thế nào.",
                 review_recommendation="Bạn đã sẵn sàng học tiếp các slide tiếp theo!" if is_correct else f"Mở lại Slide {req.page} để xem lại khái niệm.",
                 review_slide=None if is_correct else req.page,
                 reasoning=reasoning,
-                guardrail_triggered=False
+                guardrail_triggered=False,
+                theta=theta_eval["theta"],
+                new_theta=theta_eval["new_theta"],
+                p3pl_prob=theta_eval["p3pl_prob"]
             )
 
         # 1. Thử gọi GPT-4o-mini qua OpenRouter cho câu trả lời tự do
@@ -366,7 +436,6 @@ class PedagogyService:
 
         if openrouter_service.is_available():
             slide_text = rag_service.extract_slide_page(req.deck, req.page)
-            # Kết hợp thêm tóm tắt mốc kiến thức nếu có
             if current_flow.get("summary"):
                 slide_text = f"{current_flow.get('summary')}\n{slide_text}"
             q_text = req.question_text or current_flow.get("ai_question") or f"Câu hỏi kiểm tra kiến thức Slide {req.page}"
@@ -378,13 +447,12 @@ class PedagogyService:
                 student_answer=req.answer_text,
                 current_level=req.current_level,
                 current_streak=req.current_streak,
-                theta=float(req.theta) if req.theta is not None else 0.0,
-                item_a=float(req.item_a) if req.item_a is not None else 1.0,
-                item_b=float(req.item_b) if req.item_b is not None else 0.0,
-                item_c=float(req.item_c) if req.item_c is not None else 0.2
+                theta=theta,
+                item_a=item_a,
+                item_b=item_b,
+                item_c=item_c
             )
             if llm_eval:
-                # Xử lý khi kích hoạt Guardrail an toàn sư phạm / chống injection
                 if llm_eval.get("guardrail_triggered"):
                     return AnswerEvaluationResponse(
                         is_correct=False,
@@ -421,33 +489,30 @@ class PedagogyService:
                         socratic_guidance=hint
                     )
 
-                score = llm_eval.get("score", 100 if is_correct else (40 if is_misc else 60))
-                grade = llm_eval.get("grade", "Xuất sắc (Hiểu sâu)" if is_correct else ("Cần củng cố (Lỗi ngộ nhận)" if is_misc else "Chưa đầy đủ"))
                 review_rec = llm_eval.get("review_recommendation") or (
                     "Lập luận rất sắc bén! Bạn đã hiểu đúng bản chất và sẵn sàng học tiếp." if is_correct else (
                         f"Bạn cần xem lại Slide {req.page} để đính chính giả định: {faulty}" if faulty else f"Hãy đọc lại Slide {req.page}."
                     )
                 )
 
-                new_streak = llm_eval.get("new_streak", req.current_streak + 1 if is_correct else 0)
-                new_level = llm_eval.get("new_level", min(req.current_level + 1, 3) if (is_correct and req.current_streak >= 1) else req.current_level)
-                should_level_up = llm_eval.get("should_level_up", is_correct and req.current_streak >= 1 and req.current_level < 3)
-
                 return AnswerEvaluationResponse(
                     is_correct=is_correct,
-                    score=score,
-                    grade=grade,
+                    score=llm_eval.get("score", 100 if is_correct else 40),
+                    grade=llm_eval.get("grade", "Đạt yêu cầu"),
                     feedback=feedback,
                     diagnostic=diagnostic,
-                    new_streak=new_streak,
-                    new_level=new_level,
-                    should_level_up=should_level_up,
-                    should_scaffold=not is_correct,
+                    new_streak=llm_eval.get("new_streak", req.current_streak + 1 if is_correct else 0),
+                    new_level=llm_eval.get("new_level", req.current_level),
+                    should_level_up=llm_eval.get("should_level_up", False),
+                    should_scaffold=llm_eval.get("should_scaffold", not is_correct),
                     socratic_hint=hint or f"Đối chiếu lại nội dung Slide {req.page} để tìm ra câu trả lời nhé!",
                     review_recommendation=review_rec,
                     review_slide=None if is_correct else req.page,
                     reasoning=reasoning,
-                    guardrail_triggered=False
+                    guardrail_triggered=False,
+                    theta=llm_eval.get("theta", theta),
+                    new_theta=llm_eval.get("new_theta", theta),
+                    p3pl_prob=llm_eval.get("p3pl_prob")
                 )
 
         # 2. Fallback heuristic Misconception Bank
@@ -470,19 +535,38 @@ class PedagogyService:
 
         if diagnostic and matched_misc:
             rev_slide = matched_misc.get("review_slide", req.page)
+            theta_eval = evaluate_learner_by_theta(
+                theta=theta,
+                is_correct=False,
+                a=item_a,
+                b=item_b,
+                c=item_c,
+                current_level=req.current_level,
+                current_streak=req.current_streak
+            )
+            reasoning = {
+                "thought": f"Phát hiện ngộ nhận qua Misconception Bank: {diagnostic.faulty_assumption}. Đánh giá is_correct = false.",
+                "action": f"call_function update_theta(theta={theta}, is_correct=False, a={item_a}, b={item_b}, c={item_c})",
+                "observation": theta_eval["reasoning_observation"],
+                "pedagogical_decision": theta_eval["pedagogical_decision"]
+            }
             return AnswerEvaluationResponse(
                 is_correct=False,
-                score=40,
-                grade="Cần củng cố (Mắc lỗi ngộ nhận)",
+                score=theta_eval["score"],
+                grade=theta_eval["grade"],
                 feedback=f"⚠️ Phát hiện giả định sai: {diagnostic.faulty_assumption}",
                 diagnostic=diagnostic,
-                new_streak=0,
-                new_level=max(req.current_level - 1, 1),
-                should_level_up=False,
-                should_scaffold=True,
+                new_streak=theta_eval["new_streak"],
+                new_level=theta_eval["new_level"],
+                should_level_up=theta_eval["should_level_up"],
+                should_scaffold=theta_eval["should_scaffold"],
                 socratic_hint=f"Đối chiếu đoạn [{diagnostic.citation_id}]: {diagnostic.socratic_guidance}",
                 review_recommendation=f"Bạn cần mở lại {matched_misc['slide']} để hiểu rõ: {matched_misc['explanation']}",
-                review_slide=rev_slide
+                review_slide=rev_slide,
+                reasoning=reasoning,
+                theta=theta_eval["theta"],
+                new_theta=theta_eval["new_theta"],
+                p3pl_prob=theta_eval["p3pl_prob"]
             )
 
         # 3. Kiểm tra xem người dùng có chọn trực tiếp một trong các phương án A/B của slide mốc này không
@@ -490,83 +574,119 @@ class PedagogyService:
         current_flow = deck_flow.get(req.page)
         if current_flow:
             for opt in current_flow.get("options", []):
-                # Khớp phương án theo ID (A/B) hoặc nội dung văn bản
                 if req.answer_text.strip() == opt["id"] or opt["text"].lower() in text_lower or text_lower in opt["text"].lower():
-                    if opt["is_correct"]:
-                        new_streak = req.current_streak + 1
-                        new_level = req.current_level + 1 if new_streak >= STREAK_FOR_LEVEL_UP and req.current_level < MAX_ADAPTIVE_LEVEL else req.current_level
+                    is_correct = bool(opt["is_correct"])
+                    theta_eval = evaluate_learner_by_theta(
+                        theta=theta,
+                        is_correct=is_correct,
+                        a=item_a,
+                        b=item_b,
+                        c=item_c,
+                        current_level=req.current_level,
+                        current_streak=req.current_streak
+                    )
+                    reasoning = {
+                        "thought": f"Học viên chọn phương án '{opt['text'][:50]}...'. Đánh giá is_correct = {is_correct}.",
+                        "action": f"call_function update_theta(theta={theta}, is_correct={is_correct}, a={item_a}, b={item_b}, c={item_c})",
+                        "observation": theta_eval["reasoning_observation"],
+                        "pedagogical_decision": theta_eval["pedagogical_decision"]
+                    }
+                    if is_correct:
                         return AnswerEvaluationResponse(
                             is_correct=True,
-                            score=100,
-                            grade="Xuất sắc (Nắm vững bản chất)",
+                            score=theta_eval["score"],
+                            grade=theta_eval["grade"],
                             feedback=f"🎉 {opt['feedback']}",
                             diagnostic=None,
-                            new_streak=new_streak,
-                            new_level=new_level,
-                            should_level_up=new_streak >= STREAK_FOR_LEVEL_UP,
-                            should_scaffold=False,
+                            new_streak=theta_eval["new_streak"],
+                            new_level=theta_eval["new_level"],
+                            should_level_up=theta_eval["should_level_up"],
+                            should_scaffold=theta_eval["should_scaffold"],
                             socratic_hint="Hãy tiếp tục duy trì lập luận chặt chẽ khi đọc các slide tiếp theo!",
                             review_recommendation="Bạn đã nắm rất vững kiến thức mốc này! Hãy tự tin tiếp tục học các slide tiếp theo.",
-                            review_slide=None
+                            review_slide=None,
+                            reasoning=reasoning,
+                            theta=theta_eval["theta"],
+                            new_theta=theta_eval["new_theta"],
+                            p3pl_prob=theta_eval["p3pl_prob"]
                         )
                     else:
                         rev_target = current_flow.get("prior_page") or req.page
                         return AnswerEvaluationResponse(
                             is_correct=False,
-                            score=40,
-                            grade="Cần củng cố (Chưa chính xác)",
+                            score=theta_eval["score"],
+                            grade=theta_eval["grade"],
                             feedback=f"⚠️ {opt['feedback']}",
                             diagnostic=None,
-                            new_streak=0,
-                            new_level=req.current_level,
-                            should_level_up=False,
-                            should_scaffold=True,
+                            new_streak=theta_eval["new_streak"],
+                            new_level=theta_eval["new_level"],
+                            should_level_up=theta_eval["should_level_up"],
+                            should_scaffold=theta_eval["should_scaffold"],
                             socratic_hint=f"Quan sát lại Slide {rev_target} để tìm ra mối liên hệ chính xác.",
                             review_recommendation=f"Bạn cần mở lại Slide {rev_target} để ôn tập: {current_flow.get('bridge_note') or current_flow.get('summary')}",
-                            review_slide=rev_target
+                            review_slide=rev_target,
+                            reasoning=reasoning,
+                            theta=theta_eval["theta"],
+                            new_theta=theta_eval["new_theta"],
+                            p3pl_prob=theta_eval["p3pl_prob"]
                         )
 
         # 4. Kiểm tra câu trả lời tự do có lý luận tốt (từ khóa cốt lõi)
         is_correct = any(kw in text_lower for kw in ["1.3", "1.4", "hệ số", "sub-token", "vector", "song song", "softmax", "deterministic", "system prompt"])
+        theta_eval = evaluate_learner_by_theta(
+            theta=theta,
+            is_correct=is_correct,
+            a=item_a,
+            b=item_b,
+            c=item_c,
+            current_level=req.current_level,
+            current_streak=req.current_streak
+        )
+        reasoning = {
+            "thought": f"Phân tích từ khóa câu trả lời. Xác định is_correct = {is_correct}.",
+            "action": f"call_function update_theta(theta={theta}, is_correct={is_correct}, a={item_a}, b={item_b}, c={item_c})",
+            "observation": theta_eval["reasoning_observation"],
+            "pedagogical_decision": theta_eval["pedagogical_decision"]
+        }
 
         if is_correct:
-            new_streak = req.current_streak + 1
-            new_level = req.current_level
-            should_level_up = False
-            if new_streak >= STREAK_FOR_LEVEL_UP and new_level < MAX_ADAPTIVE_LEVEL:
-                new_level += 1
-                new_streak = 0
-                should_level_up = True
-
             return AnswerEvaluationResponse(
                 is_correct=True,
-                score=100,
-                grade="Xuất sắc (Hiểu sâu bản chất)",
+                score=theta_eval["score"],
+                grade=theta_eval["grade"],
                 feedback="🎉 Chính xác tuyệt đối! Bạn đã bắc cầu lý thuyết thành công vào bài toán thực tế.",
                 diagnostic=None,
-                new_streak=new_streak,
-                new_level=new_level,
-                should_level_up=should_level_up,
-                should_scaffold=False,
+                new_streak=theta_eval["new_streak"],
+                new_level=theta_eval["new_level"],
+                should_level_up=theta_eval["should_level_up"],
+                should_scaffold=theta_eval["should_scaffold"],
                 socratic_hint="Hãy tiếp tục duy trì lập luận chặt chẽ khi học tiếp!",
                 review_recommendation="Bạn đã nắm rất vững kiến thức này. Hãy cuộn xuống các slide tiếp theo để học kiến thức mới!",
-                review_slide=None
+                review_slide=None,
+                reasoning=reasoning,
+                theta=theta_eval["theta"],
+                new_theta=theta_eval["new_theta"],
+                p3pl_prob=theta_eval["p3pl_prob"]
             )
 
-        # 4. Câu trả lời chưa rõ ràng
+        # 5. Câu trả lời chưa rõ ràng
         return AnswerEvaluationResponse(
             is_correct=False,
-            score=60,
-            grade="Chưa chính xác",
+            score=theta_eval["score"],
+            grade=theta_eval["grade"],
             feedback="Câu trả lời của bạn có hướng suy nghĩ tốt nhưng chưa đủ cơ sở dữ liệu.",
             diagnostic=None,
-            new_streak=0,
-            new_level=req.current_level,
-            should_level_up=False,
-            should_scaffold=True,
+            new_streak=theta_eval["new_streak"],
+            new_level=theta_eval["new_level"],
+            should_level_up=theta_eval["should_level_up"],
+            should_scaffold=theta_eval["should_scaffold"],
             socratic_hint=f"Tại Slide {req.page}, hãy đọc lại sơ đồ trên slide và đối chiếu với slide trước xem sự khác biệt nằm ở đâu?",
             review_recommendation=f"Bạn cần quan sát kỹ lại sơ đồ minh họa tại Slide {req.page}.",
-            review_slide=req.page
+            review_slide=req.page,
+            reasoning=reasoning,
+            theta=theta_eval["theta"],
+            new_theta=theta_eval["new_theta"],
+            p3pl_prob=theta_eval["p3pl_prob"]
         )
 
     async def answer_student_query(self, req: StudentChatRequest) -> StudentChatResponse:

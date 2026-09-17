@@ -32,11 +32,13 @@ class StudentAnswerRequest(BaseModel):
     current_level: int = Field(1, example=1)
     current_streak: int = Field(0, example=0)
     is_option_correct: Optional[bool] = None
+    question_text: Optional[str] = None
+    selected_option_id: Optional[str] = None
+    theta: Optional[float] = 0.0
+    item_a: Optional[float] = 1.0
+    item_b: Optional[float] = 0.0
+    item_c: Optional[float] = 0.2
 
-    theta: Optional[float] = Field(0.0, example=0.0)
-    item_a: Optional[float] = Field(1.0, example=1.0)
-    item_b: Optional[float] = Field(0.0, example=0.0)
-    item_c: Optional[float] = Field(0.2, example=0.2)
 
 # Request: Giảng viên ghi đè kịch bản / can thiệp (Tính năng 4)
 class InstructorOverrideRequest(BaseModel):
@@ -70,6 +72,9 @@ class AnswerEvaluationResponse(BaseModel):
     review_slide: Optional[int] = None  # Slide cần mở lại để ôn tập
     reasoning: Optional[Dict[str, Any]] = None  # Chuỗi tư duy ReAct (thought, action, observation)
     guardrail_triggered: bool = False  # Bật nếu phát hiện prompt injection hoặc vi phạm an toàn
+    theta: Optional[float] = None  # Năng lực theta trước đánh giá
+    new_theta: Optional[float] = None  # Năng lực theta sau cập nhật hàm 3PL
+    p3pl_prob: Optional[float] = None  # Xác suất đoán đúng tính theo P(theta) IRT 3PL
 
 # Response: Câu hỏi gợi nhớ theo Slide
 class QuestionOption(BaseModel):
@@ -101,6 +106,7 @@ class SlideQuestionResponse(BaseModel):
     citations: List[str]
     questions: List[QuestionVariant] = []
     next_checkpoint: Optional[int] = None
+    source: Optional[str] = "preset"
 
 # Response: Dashboard Giảng viên (Tính năng 4 trong Sơ đồ)
 class KPIMetric(BaseModel):

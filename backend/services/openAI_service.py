@@ -91,8 +91,8 @@ class OpenRouterService:
             prior_concept=prior_concept
         )
 
-        # Yêu cầu LLM sinh 4 biến thể câu hỏi và trả về mảng JSON "questions"
-        prompt += "\n\nYêu cầu: Sinh một mảng JSON 'questions' gồm 4 biến thể câu hỏi (4 objects). Mỗi object phải có các trường: title, ai_question, summary, bridge_flow, bridge_note, level, level_label, options (mảng A-D với id/text/is_correct/feedback), citations. Trả về JSON thuần túy, không kèm markdown hoặc text ngoài JSON."
+        # Yêu cầu LLM sinh câu hỏi với ĐỦ 4 PHƯƠNG ÁN (A, B, C, D)
+        prompt += "\n\nQUY ĐỊNH BẮT BUỘC:\n1. Mỗi câu hỏi PHẢI CÓ ĐỦ 4 PHƯƠNG ÁN LỰA CHỌN (A, B, C, D) trong mảng 'options', trong đó có đúng 1 đáp án đúng (is_correct=true) và 3 đáp án bẫy ngộ nhận/nhiễu (is_correct=false) kèm lời giải thích feedback chi tiết.\n2. Trả về JSON thuần túy, không kèm markdown backticks hay giải thích bên ngoài."
 
         headers = {
             "Authorization": f"Bearer {self.api_key}",
@@ -107,7 +107,7 @@ class OpenRouterService:
                 {"role": "user", "content": prompt.strip()}
             ],
             "temperature": 0.7,
-            "max_tokens": 800
+            "max_tokens": 1200
         }
 
         try:
@@ -182,6 +182,8 @@ class OpenRouterService:
             item_c=item_c
         )
 
+        from backend.services.analytics_service import evaluate_learner_by_theta, UPDATE_THETA_TOOL
+
         headers = {
             "Authorization": f"Bearer {self.api_key}",
             "HTTP-Referer": "http://localhost:8000",
@@ -194,6 +196,7 @@ class OpenRouterService:
                 {"role": "system", "content": REACT_EVALUATOR_SYSTEM_PROMPT.strip()},
                 {"role": "user", "content": prompt.strip()}
             ],
+            "tools": [UPDATE_THETA_TOOL],
             "temperature": 0.2,
             "max_tokens": 650
         }
@@ -202,12 +205,80 @@ class OpenRouterService:
             async with httpx.AsyncClient(timeout=15.0) as client:
                 res = await client.post(self.endpoint, headers=headers, json=payload)
                 if res.status_code == 200:
-                    raw_content = res.json()["choices"][0]["message"]["content"].strip()
+                    choice = res.json()["choices"][0]["message"]
+                    parsed = {}
+                    
+                    # Kiểm tra xem LLM có thực hiện Tool Calling (function calling) không
+                    if choice.get("tool_calls"):
+                        for tool_call in choice["tool_calls"]:
+                            fn = tool_call.get("function", {})
+                            if fn.get("name") == "update_theta_and_evaluate":
+                                try:
+                                    args = json.loads(fn.get("arguments", "{}"))
+                                    is_cor = bool(args.get("is_correct", False))
+                                    theta_eval = evaluate_learner_by_theta(
+                                        theta=float(args.get("theta", theta)),
+                                        is_correct=is_cor,
+                                        a=float(args.get("a", item_a)),
+                                        b=float(args.get("b", item_b)),
+                                        c=float(args.get("c", item_c)),
+                                        current_level=current_level,
+                                        current_streak=current_streak
+                                    )
+                                    parsed = {
+                                        "is_correct": is_cor,
+                                        "feedback": "Phân tích lập luận hoàn tất và cập nhật năng lực theta.",
+                                        "reasoning": {
+                                            "thought": "LLM thực hiện function call hàm update_theta.",
+                                            "action": f"call_function update_theta(theta={theta}, is_correct={is_cor}, a={item_a}, b={item_b}, c={item_c})",
+                                            "observation": theta_eval["reasoning_observation"],
+                                            "pedagogical_decision": theta_eval["pedagogical_decision"]
+                                        }
+                                    }
+                                    parsed.update(theta_eval)
+                                    parsed["guardrail_triggered"] = False
+                                    return parsed
+                                except Exception as err:
+                                    print(f"[OpenRouterService] Tool call parse error: {err}")
+
+                    raw_content = (choice.get("content") or "").strip()
                     if raw_content.startswith("```"):
                         raw_content = raw_content.split("\n", 1)[1]
                         if raw_content.endswith("```"):
                             raw_content = raw_content.rsplit("```", 1)[0]
-                    parsed = json.loads(raw_content.strip())
+                    if raw_content:
+                        parsed = json.loads(raw_content.strip())
+
+                    # Dù LLM trả về JSON gì, ĐÁNH GIÁ NĂNG LỰC NGƯỜI HỌC BẮT BUỘC THEO HÀM THETA
+                    is_correct_val = bool(parsed.get("is_correct", False))
+                    theta_eval = evaluate_learner_by_theta(
+                        theta=theta,
+                        is_correct=is_correct_val,
+                        a=item_a,
+                        b=item_b,
+                        c=item_c,
+                        current_level=current_level,
+                        current_streak=current_streak
+                    )
+
+                    # Ghi đè các thông số đánh giá dựa hoàn toàn trên thông số theta
+                    parsed["is_correct"] = is_correct_val
+                    parsed["score"] = theta_eval["score"]
+                    parsed["grade"] = theta_eval["grade"]
+                    parsed["new_level"] = theta_eval["new_level"]
+                    parsed["new_streak"] = theta_eval["new_streak"]
+                    parsed["should_level_up"] = theta_eval["should_level_up"]
+                    parsed["should_scaffold"] = theta_eval["should_scaffold"]
+                    parsed["theta"] = theta_eval["theta"]
+                    parsed["new_theta"] = theta_eval["new_theta"]
+                    parsed["p3pl_prob"] = theta_eval["p3pl_prob"]
+
+                    if "reasoning" not in parsed or not isinstance(parsed["reasoning"], dict):
+                        parsed["reasoning"] = {}
+                    parsed["reasoning"]["action"] = f"call_function update_theta(theta={theta}, is_correct={is_correct_val}, a={item_a}, b={item_b}, c={item_c})"
+                    parsed["reasoning"]["observation"] = theta_eval["reasoning_observation"]
+                    parsed["reasoning"]["pedagogical_decision"] = theta_eval["pedagogical_decision"]
+
                     parsed["guardrail_triggered"] = False
                     return parsed
         except Exception as e:
@@ -230,7 +301,7 @@ class OpenRouterService:
             return None
 
         sys_prompt = """
-Bạn là AI Companion đồng hành trong nền tảng học tập thích ứng VLearn.
+Bạn là AI Bét Bét Bét Agent đồng hành trong nền tảng học tập thích ứng Adaptive Learning.
 Nhiệm vụ của bạn là giải thích trực quan, cung cấp ví dụ thực tế và gợi ý tư duy cho người học dựa trên bối cảnh bài giảng RAG được cung cấp.
 [NGUYÊN TẮC CỐT LÕI]:
 1. Nếu người học xin VÍ DỤ THỰC TẾ: Hãy đưa ra 1-2 ví dụ thực tế đời sống hoặc bài toán công nghiệp cụ thể, gần gũi, dễ hình dung về khái niệm trong slide.
