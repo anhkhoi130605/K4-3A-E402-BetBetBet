@@ -888,6 +888,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // ================= 5. INSTRUCTOR DASHBOARD =================
   async function fetchInstructorData() {
     fetchThetaLogs();
+    loadTeacherMisconceptions();
     try {
       const res = await fetch(`${API_BASE}/api/analytics/dashboard`);
       if (res.ok) {
@@ -948,6 +949,89 @@ document.addEventListener('DOMContentLoaded', () => {
         </tr>
       `).join('');
     }
+  }
+
+  // Quản lý và render Nhật ký ngộ nhận của học sinh cho Giáo viên
+  const miscLogBody = document.getElementById('misconception-log-body');
+  const miscRecordCount = document.getElementById('misc-record-count');
+  const miscFilterStatus = document.getElementById('misc-filter-status');
+  const btnRefreshMiscLog = document.getElementById('btn-refresh-misc-log');
+
+  async function loadTeacherMisconceptions() {
+    if (!miscLogBody) return;
+    try {
+      const statusParam = miscFilterStatus ? miscFilterStatus.value : '';
+      const url = statusParam ? `${API_BASE}/api/teacher/misconceptions?status=${encodeURIComponent(statusParam)}` : `${API_BASE}/api/teacher/misconceptions`;
+      const res = await fetch(url);
+      if (!res.ok) return;
+      const data = await res.json();
+      const records = data.records || [];
+
+      if (miscRecordCount) {
+        miscRecordCount.textContent = `${records.length} ngộ nhận`;
+      }
+
+      if (records.length === 0) {
+        miscLogBody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: var(--text-muted); padding: 16px;">Chưa có bản ghi ngộ nhận nào phù hợp.</td></tr>`;
+        return;
+      }
+
+      miscLogBody.innerHTML = records.map(r => {
+        const timeStr = r.timestamp ? new Date(r.timestamp).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '--:--';
+        const statusBadge = r.status === 'remediated'
+          ? '<span style="color: #34d399; font-weight: 600;">Đã tự sửa</span>'
+          : (r.status === 'teacher_intervened'
+            ? '<span style="color: #60a5fa; font-weight: 600;">GV đã can thiệp</span>'
+            : '<span style="color: #fb7185; font-weight: 700;">Chưa giải quyết</span>');
+
+        const safeAssumption = (r.faulty_assumption || '').replace(/'/g, "\\'");
+
+        return `
+          <tr>
+            <td style="font-family: var(--font-mono); color: #94a3b8; font-size: 0.75rem;">${timeStr}</td>
+            <td style="font-family: var(--font-mono); color: #60a5fa; font-weight: 700;">${r.student_id}</td>
+            <td><span style="background: rgba(255,255,255,0.08); padding: 2px 6px; border-radius: 4px; font-size: 0.75rem;">${(r.deck || '').toUpperCase()} T${r.page}</span></td>
+            <td style="color: #f8fafc; font-weight: 600;">${r.faulty_assumption}</td>
+            <td style="color: #cbd5e1; font-style: italic; max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${r.student_answer || ''}">${r.student_answer || '—'}</td>
+            <td>${statusBadge}</td>
+            <td style="color: #a78bfa; font-size: 0.78rem; max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${r.teacher_note || ''}">${r.teacher_note || '—'}</td>
+            <td>
+              <button class="btn-mini-override" onclick="window.handleResolveMisconception('${r.id}', '${r.student_id}', '${safeAssumption}')">
+                Ghi chú / Đã xử lý
+              </button>
+            </td>
+          </tr>
+        `;
+      }).join('');
+    } catch (e) {
+      console.warn('[VLearn] Lỗi tải danh sách ngộ nhận:', e);
+    }
+  }
+
+  window.handleResolveMisconception = async function(recordId, studentId, errorText) {
+    const note = prompt(`Nhập ghi chú sư phạm hoặc hướng dẫn cho ${studentId} về lỗi:\n"${errorText}"`, 'Đã giải thích và hướng dẫn học viên nắm đúng bản chất.');
+    if (note === null) return;
+    try {
+      const res = await fetch(`${API_BASE}/api/teacher/misconceptions/${recordId}/action`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'resolve', note: note })
+      });
+      if (res.ok) {
+        alert('Đã cập nhật trạng thái ngộ nhận thành công!');
+        loadTeacherMisconceptions();
+        fetchInstructorData();
+      }
+    } catch (e) {
+      alert('Lỗi cập nhật ngộ nhận: ' + e);
+    }
+  };
+
+  if (btnRefreshMiscLog) {
+    btnRefreshMiscLog.addEventListener('click', loadTeacherMisconceptions);
+  }
+  if (miscFilterStatus) {
+    miscFilterStatus.addEventListener('change', loadTeacherMisconceptions);
   }
 
   // Tab switching cho màn hình Giảng viên

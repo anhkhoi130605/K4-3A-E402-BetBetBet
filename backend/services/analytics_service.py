@@ -17,6 +17,7 @@ from backend.models.schemas import (
     StudentRosterItem,
     InstructorOverrideRequest
 )
+from backend.services.misconception_log_service import misconception_logger
 
 # ==============================================================================
 # IRT 3PL (3-Parameter Logistic) & THETA ASSESSMENT ENGINE
@@ -269,32 +270,43 @@ class AnalyticsService:
             )
         ]
 
-        heatmap = [
-            MisconceptionHeatmapItem(
-                topic="Đồng nhất 1 từ tiếng Việt = 1 token",
-                affected_students=156,
-                pct=34.8,
-                severity="Cao"
-            ),
-            MisconceptionHeatmapItem(
-                topic="Hiểu nhầm Self-Attention duyệt tuần tự",
-                affected_students=132,
-                pct=29.5,
-                severity="Cao"
-            ),
-            MisconceptionHeatmapItem(
-                topic="Bỏ quên System Prompt khi tính chi phí API",
-                affected_students=98,
-                pct=21.9,
-                severity="Trung bình"
-            ),
-            MisconceptionHeatmapItem(
-                topic="Phân biệt Temperature = 0 và Tính tất định",
-                affected_students=62,
-                pct=13.8,
-                severity="Thấp"
-            )
-        ]
+        # Tổng hợp Heatmap ngộ nhận động kết hợp giữa số liệu khảo sát nền và MisconceptionLogService
+        base_heatmap_map = {
+            "Đồng nhất 1 từ tiếng Việt = 1 token": {"affected": 156, "pct": 34.8, "severity": "Cao"},
+            "Hiểu nhầm Self-Attention duyệt tuần tự": {"affected": 132, "pct": 29.5, "severity": "Cao"},
+            "Bỏ quên System Prompt khi tính chi phí API": {"affected": 98, "pct": 21.9, "severity": "Trung bình"},
+            "Phân biệt Temperature = 0 và Tính tất định": {"affected": 62, "pct": 13.8, "severity": "Thấp"}
+        }
+        real_stats = misconception_logger.get_misconception_stats()
+        real_map = {s["topic"]: s for s in real_stats}
+
+        heatmap = []
+        for topic, base in base_heatmap_map.items():
+            matching_key = next((k for k in real_map if topic.lower() in k.lower() or k.lower() in topic.lower()), None)
+            if matching_key:
+                m = real_map[matching_key]
+                heatmap.append(MisconceptionHeatmapItem(
+                    topic=topic,
+                    affected_students=base["affected"] + m["affected_students"],
+                    pct=base["pct"],
+                    severity=base["severity"]
+                ))
+            else:
+                heatmap.append(MisconceptionHeatmapItem(
+                    topic=topic,
+                    affected_students=base["affected"],
+                    pct=base["pct"],
+                    severity=base["severity"]
+                ))
+
+        for s in real_stats:
+            if not any(b.lower() in s["topic"].lower() or s["topic"].lower() in b.lower() for b in base_heatmap_map):
+                heatmap.append(MisconceptionHeatmapItem(
+                    topic=s["topic"],
+                    affected_students=s["affected_students"],
+                    pct=s["pct"],
+                    severity=s["severity"]
+                ))
 
         roster = [
             StudentRosterItem(

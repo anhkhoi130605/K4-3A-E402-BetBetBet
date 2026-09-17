@@ -20,16 +20,68 @@ from backend.services.rag_service import rag_service, VectorSpaceRAG
 from backend.services.openAI_service import openrouter_service
 from backend.services.analytics_service import evaluate_learner_by_theta
 from backend.config import STREAK_FOR_LEVEL_UP, MAX_ADAPTIVE_LEVEL, MISCONCEPTIONS_FILE, PRESET_FLOWS_FILE
+from backend.services.misconception_log_service import misconception_logger
 import random
-def generate_milestones(total_slides: int = 30, min_slides: int = 5, max_slides: int = 10):
-    # Chọn ngẫu nhiên số lượng slide từ min đến max (tối đa không vượt quá tổng số slide hiện có)
+
+DEFAULT_MISCONCEPTIONS = [
+    {
+        "id": "misc-01",
+        "keywords": ["120 token", "1 từ = 1 token", "1 từ tiếng việt = 1 token", "bằng đúng", "giống tiếng anh", "một từ một token"],
+        "semantic_examples": ["120 từ tiếng Việt thì bằng 120 token", "tiếng Việt mỗi từ là một token như tiếng Anh"],
+        "faulty_assumption": "Đồng nhất 1 từ tiếng Việt với 1 token (như tiếng Anh)",
+        "citation": "T04-049",
+        "slide": "Slide Day 1 · Trang 12",
+        "review_slide": 12,
+        "explanation": "Tiếng Việt có dấu thanh và cấu trúc âm tiết ghép, bộ tokenizer tách từ tiếng Việt thành 1.3 - 1.4 token trung bình mỗi từ.",
+        "sub_question": "Nếu từ 'Học tập' bị tách thành các sub-token, thì 120 từ tiếng Việt sẽ tốn khoảng bao nhiêu token so với 120 từ tiếng Anh?"
+    },
+    {
+        "id": "misc-02",
+        "keywords": ["tuần tự", "trái sang phải", "từng từ một", "đọc tuần tự", "theo thời gian", "duyệt tuần tự"],
+        "semantic_examples": ["Transformer đọc từng từ từ trái qua phải theo thời gian", "Mô hình duyệt tuần tự từng từ như con người"],
+        "faulty_assumption": "Nghĩ rằng Transformer duyệt tuần tự từng từ như con người hay RNN/LSTM cũ",
+        "citation": "T06-086",
+        "slide": "Slide Day 1 · Trang 18",
+        "review_slide": 18,
+        "explanation": "Cơ chế Self-Attention trong Transformer cho phép TẤT CẢ các token nhìn nhau SONG SONG cùng lúc trong không gian toán học.",
+        "sub_question": "Nếu cơ chế là song song, ma trận Attention giữa các từ được tính toán đồng thời hay theo thứ tự thời gian?"
+    },
+    {
+        "id": "misc-03",
+        "keywords": ["không mất phí", "chỉ tính 120 từ", "cài sẵn trong server", "bỏ qua system prompt", "system prompt miễn phí"],
+        "semantic_examples": ["System prompt không bị tính phí token", "Chỉ tính token câu hỏi của người dùng"],
+        "faulty_assumption": "Bỏ quên chi phí Input Token của System Prompt trong mỗi lượt gọi API",
+        "citation": "T04-089",
+        "slide": "Slide Day 1 · Trang 22",
+        "review_slide": 22,
+        "explanation": "Mỗi request gửi lên API đều phải gửi kèm toàn bộ System Prompt (chỉ thị nền tảng), do đó System Prompt được tính phí input cho MỌI câu chat.",
+        "sub_question": "Nếu có 10.000 request/ngày, thì phần System Prompt dài 250 từ sẽ bị nhân lên bao nhiêu lần trong tổng hóa đơn API?"
+    },
+    {
+        "id": "misc-04",
+        "keywords": ["temperature = 0 luôn cố định", "temperature 0 tuyệt đối 100%", "không ngẫu nhiên bao giờ"],
+        "semantic_examples": ["Khi temperature bằng 0 thì câu trả lời luôn luôn giống hệt nhau 100% không bao giờ đổi"],
+        "faulty_assumption": "Cho rằng Temperature = 0 đảm bảo kết quả 100% tất định tuyệt đối",
+        "citation": "T04-089",
+        "slide": "Slide Day 1 · Trang 22",
+        "review_slide": 22,
+        "explanation": "Khi Temperature = 0, model chọn token có xác suất cao nhất (Greedy Decoding) nên rất nhất quán, tuy nhiên do tính toán song song số thực trên GPU cluster, kết quả vẫn có thể có sai khác vi mô.",
+        "sub_question": "Tại sao việc tính toán song song ma trận số thực trên nhiều GPU lại có thể dẫn đến sự khác biệt nhỏ giữa các lần gọi API dù temperature = 0?"
+    }
+]
+
+def generate_milestones(total_slides: int = 29, min_slides: int = 4, max_slides: int = 8):
     count = random.randint(min_slides, min(max_slides, total_slides))
-    # Chọn ngẫu nhiên các chỉ số slide không trùng nhau và sắp xếp theo thứ tự tăng dần
     return sorted(random.sample(range(1, total_slides + 1), count))
-#Checkpoint test Question
+
+# Checkpoint test Questions: Luôn bao gồm các slide mốc sư phạm cốt lõi kết hợp ngẫu nhiên
+CORE_MILESTONES = {
+    "d1": [6, 12, 14, 18, 20, 22, 25],
+    "d2": [5, 11, 20]
+}
 KEY_MILESTONES = {
-    "d1": generate_milestones(total_slides=30, min_slides=5, max_slides=10),
-    "d2": generate_milestones(total_slides=30, min_slides=5, max_slides=10)
+    "d1": sorted(list(set(CORE_MILESTONES["d1"] + generate_milestones(total_slides=29, min_slides=3, max_slides=6)))),
+    "d2": sorted(list(set(CORE_MILESTONES["d2"] + generate_milestones(total_slides=29, min_slides=3, max_slides=6))))
 }
 
 # ==============================================================================
@@ -51,7 +103,7 @@ class SemanticMisconceptionMatcher:
         self.load_bank()
 
     def load_bank(self):
-        """Nạp dữ liệu từ file misconceptions.json hoặc database"""
+        """Nạp dữ liệu từ file misconceptions.json hoặc database (kèm fallback an toàn)"""
         try:
             if self.file_path.exists():
                 data = json.loads(self.file_path.read_text(encoding="utf-8"))
@@ -61,7 +113,10 @@ class SemanticMisconceptionMatcher:
                     return
         except Exception as e:
             print(f"[MisconceptionMatcher] Error loading from {self.file_path}: {e}")
-            self.bank = []
+
+        # Fallback an toàn nếu file JSON chưa có hoặc rỗng
+        self.bank = list(DEFAULT_MISCONCEPTIONS)
+        self._build_vector_index()
 
 
     def _build_vector_index(self):
@@ -161,6 +216,116 @@ misconception_matcher = SemanticMisconceptionMatcher()
 MISCONCEPTION_BANK = misconception_matcher.bank
 
 
+DEFAULT_PRESET_FLOWS = {
+    "d1": {
+        6: {
+            "title": "Trang 6: 1980 - Hệ chuyên gia (Expert System)",
+            "summary": "AI đổi chiến lược: thôi theo đuổi trí tuệ tổng quát (AGI) và tập trung giải thật tốt một miền hẹp bằng cách mã hóa tri thức chuyên gia thành luật.",
+            "prior_page": None,
+            "bridge_concept": "Lịch sử AI: Chuyển dịch từ trí tuệ tổng quát sang giải bài toán hẹp",
+            "bridge_note": "Giai đoạn 1980 đánh dấu sự ra đời của Hệ chuyên gia (Expert System), thay vì cố giải mọi bài toán thì tập trung mã hóa tri thức chuyên gia thành các tập luật IF-THEN trong một miền xác định.",
+            "citations": ["T06-022", "T04-047"],
+            "ai_question": "Theo Slide 6, bước chuyển chiến lược quan trọng của ngành AI vào năm 1980 dẫn đến sự ra đời của Hệ chuyên gia (Expert System) là gì?",
+            "options": [
+                {"id": "A", "text": "Thôi theo đuổi trí tuệ tổng quát và tập trung giải thật tốt một miền bài toán hẹp bằng cách mã hóa tri thức chuyên gia thành luật.", "is_correct": True, "feedback": "Chính xác! Slide 6 nêu rõ: AI đổi chiến lược sang mã hóa tri thức chuyên gia thành luật (rules) để giải quyết thật tốt một miền hẹp."},
+                {"id": "B", "text": "Từ bỏ hoàn toàn máy tính điện tử và chuyển sang nghiên cứu mô phỏng sinh học tế bào nơ-ron sống.", "is_correct": False, "feedback": "Chưa chính xác: AI thập niên 1980 áp dụng lập trình ký hiệu (symbolic AI) và tập luật trên máy tính, không từ bỏ máy tính điện tử."},
+                {"id": "C", "text": "Chuyển sang huấn luyện các mô hình ngôn ngữ lớn (LLM) hàng tỷ tham số tự động cào dữ liệu Internet.", "is_correct": False, "feedback": "Sai mốc lịch sử: LLM và Internet bùng nổ nhiều thập kỷ sau đó (2017+ Transformer, 2022 ChatGPT). Năm 1980 là kỷ nguyên của luật tay (handcrafted rules)."},
+                {"id": "D", "text": "Tập trung xây dựng hệ thống trí tuệ nhân tạo toàn năng (AGI) có thể tự động trả lời mọi câu hỏi thuộc mọi lĩnh vực cùng lúc.", "is_correct": False, "feedback": "Sai lầm: Ngược lại, chính vì theo đuổi trí tuệ tổng quát gặp bế tắc (mùa đông AI) nên năm 1980 ngành AI mới thu hẹp phạm vi về một miền bài toán cụ thể."}
+            ]
+        },
+        12: {
+            "title": "Trang 12: Đơn vị Token & Vòng lặp Đoán Tiếp (Autoregressive)",
+            "summary": "Sinh văn bản = đoán token → nối vào câu → đoán tiếp. Đơn vị cơ bản là Token, tiếng Việt có dấu thanh tốn hệ số ~1.35x sub-token.",
+            "prior_page": 6,
+            "bridge_concept": "Hệ chuyên gia theo luật (Slide 6) ➔ LLM đoán Token theo xác suất (Slide 12)",
+            "bridge_note": "Ở Slide 6, Hệ chuyên gia xử lý theo tập luật IF-THEN cứng. Đến Slide 12, mô hình ngôn ngữ sinh văn bản bằng cách liên tục tính xác suất và đoán token tiếp theo (với tiếng Việt tốn ~1.35x sub-token).",
+            "citations": ["T04-049"],
+            "ai_question": "🔗 GỢI NHỚ TỪ SLIDE 6: Khác với Hệ chuyên gia (Slide 6) dùng luật cứng, mô hình ở Slide 12 sinh văn bản theo vòng lặp đoán token nào và tại sao tiếng Việt phải nhân hệ số sub-token?",
+            "options": [
+                {"id": "A", "text": "Vì mô hình xử lý trên không gian toán học (embedding vector), và tiếng Việt có dấu cần chẻ thành sub-tokens.", "is_correct": True, "feedback": "Xuất sắc! Bạn đã kết nối đúng từ nguyên lý dự đoán xác suất (Slide 6) sang cơ chế mã hóa toán học của Token (Slide 12)."},
+                {"id": "B", "text": "Vì tiếng Việt viết từ phải sang trái nên máy tính bắt buộc phải đổi sang token.", "is_correct": False, "feedback": "Chưa đúng: Tiếng Việt viết từ trái sang phải, việc chẻ token là do cấu trúc dấu thanh và âm tiết ghép."},
+                {"id": "C", "text": "Vì mỗi từ tiếng Việt luôn tương ứng đúng 1 token duy nhất giống hệt tiếng Anh nên không cần chẻ nhỏ.", "is_correct": False, "feedback": "Ngộ nhận kinh điển: Tiếng Việt có dấu thanh khiến bộ tokenizer BPE tách thành 1.3 - 1.4 sub-token/từ!"},
+                {"id": "D", "text": "Vì máy chủ AI chỉ lưu trữ bảng mã ASCII tiếng Anh, không thể đọc được ký tự Unicode tiếng Việt.", "is_correct": False, "feedback": "Sai lầm: Các bộ tokenizer hiện đại như BPE xử lý UTF-8 đa ngôn ngữ thông qua sub-token."}
+            ]
+        },
+        14: {
+            "title": "Trang 14: Context Window & Giới Hạn Ngữ Cảnh",
+            "summary": "Context Window là cửa sổ bối cảnh tối đa mà mô hình tiêu thụ trong một lần xử lý.",
+            "prior_page": 12,
+            "bridge_concept": "Hệ số Token tiếng Việt (Slide 12) ➔ Sức chứa Context Window (Slide 14)",
+            "bridge_note": "Nếu quên tính hệ số 1.35x ở Slide 12, bạn sẽ ước lượng sai sức chứa Context Window ở Slide 14.",
+            "citations": ["T04-051"],
+            "ai_question": "🔗 KẾT NỐI VỚI SLIDE 12: Một tài liệu tiếng Việt dài 80.000 từ đưa vào mô hình có Context Window 100.000 token, liệu có bị tràn context không?",
+            "options": [
+                {"id": "A", "text": "Có nguy cơ tràn! Vì theo Slide 12, 80.000 từ tiếng Việt nhân hệ số ~1.35x tương đương ~108.000 token, vượt ngưỡng 100.000 token.", "is_correct": True, "feedback": "Chính xác tuyệt đối! Đây là lỗi rất phổ biến khi không liên kết giữa đơn vị từ tiếng Việt và token."},
+                {"id": "B", "text": "Không tràn, vì 80.000 từ luôn luôn nhỏ hơn 100.000 token.", "is_correct": False, "feedback": "Sai lầm: 1 từ tiếng Việt không bằng 1 token! Cần nhân hệ số quy đổi ~1.35x."},
+                {"id": "C", "text": "Không tràn, vì mô hình sẽ tự động nén văn bản tiếng Việt lại còn 50.000 token.", "is_correct": False, "feedback": "Chưa chính xác: LLM không tự nén token đầu vào nếu không có thuật toán nén chuyên dụng."},
+                {"id": "D", "text": "Có tràn, nhưng chỉ do kích thước file tính bằng Megabyte (MB) quá lớn chứ không liên quan đến token.", "is_correct": False, "feedback": "Sai lầm: Giới hạn Context Window được đo bằng Token, không đo bằng dung lượng MB."}
+            ]
+        },
+        18: {
+            "title": "Trang 18: Kiến Trúc Transformer & Self-Attention",
+            "summary": "Xử lý song song, các token nhìn lẫn nhau trong ngữ cảnh, không bị quên như RNN/LSTM cũ.",
+            "prior_page": 14,
+            "bridge_concept": "Giới hạn đọc (Slide 14) ➔ Cơ chế 'nhìn song song' không bị quên (Slide 18)",
+            "bridge_note": "Mô hình cũ đọc tuần tự nên càng về sau càng quên; Transformer cho các token nhìn nhau song song.",
+            "citations": ["T06-086", "T06-127"],
+            "ai_question": "🔗 GỢI NHỚ TỪ SLIDE 6 & 14: Trước Transformer, các mô hình cũ đọc từng từ từ trái sang phải và hay quên context dài (Slide 14). Transformer giải quyết điểm nghẽn này thế nào?",
+            "options": [
+                {"id": "A", "text": "Cơ chế Self-Attention cho phép TẤT CẢ các token nhìn nhau SONG SONG cùng lúc trong không gian toán học, không duyệt tuần tự.", "is_correct": True, "feedback": "Rất chuẩn! Bạn đã nắm được bước đột phá của Self-Attention so với cơ chế tuần tự cũ."},
+                {"id": "B", "text": "Mô hình nâng cấp thêm thanh RAM trên GPU để nhớ tuần tự lâu hơn.", "is_correct": False, "feedback": "Chưa đúng: Bản chất là thay đổi kiến trúc thuật toán sang song song (Self-Attention), không phải chỉ tăng RAM."},
+                {"id": "C", "text": "Mô hình đảo ngược chiều đọc từ phải sang trái để đọc lại phần ngữ cảnh bị quên.", "is_correct": False, "feedback": "Sai lầm: Transformer không duyệt tuần tự xuôi hay ngược mà tính toán ma trận song song toàn bộ."},
+                {"id": "D", "text": "Mô hình loại bỏ hoàn toàn các từ đứng ở đầu câu và chỉ giữ lại 50 từ cuối cùng.", "is_correct": False, "feedback": "Chưa chính xác: Transformer tính toán trọng số tương đồng cho toàn bộ cửa sổ ngữ cảnh."}
+            ]
+        },
+        20: {
+            "title": "Trang 20: Cơ Chế Toán Học: Q, K, V & Softmax",
+            "summary": "Query, Key, Value biểu diễn vector; Softmax tính điểm tương đồng similarity score.",
+            "prior_page": 18,
+            "bridge_concept": "Các token nhìn nhau (Slide 18) ➔ Công thức toán học Q, K, V (Slide 20)",
+            "bridge_note": "Khái niệm trực quan 'nhìn nhau' ở Slide 18 được hiện thực hóa bằng ma trận Q nhân K qua hàm Softmax ở Slide 20.",
+            "citations": ["T06-130"],
+            "ai_question": "🔗 KẾT NỐI VỚI SLIDE 18: Trong cơ chế Self-Attention (Slide 18), làm thế nào để mô hình tính toán được điểm liên kết mật thiết giữa hai token trong câu?",
+            "options": [
+                {"id": "A", "text": "Dùng phép nhân vô hướng giữa vector Query (Q) của từ này với Key (K) của từ kia, rồi chuẩn hóa qua hàm Softmax.", "is_correct": True, "feedback": "Tuyệt vời! Công thức Attention(Q,K,V) = softmax(QK^T / sqrt(d_k)) * V là trái tim của Transformer."},
+                {"id": "B", "text": "Đếm số lần hai từ cùng xuất hiện cạnh nhau trong từ điển tiếng Việt.", "is_correct": False, "feedback": "Chưa đúng: Mô hình dùng biểu diễn vector ngữ cảnh, không tra từ điển tần số."},
+                {"id": "C", "text": "Dùng hàm IF-THEN so sánh xem hai từ có cùng loại từ hay không.", "is_correct": False, "feedback": "Sai lầm: Đó là cách làm cũ của Hệ chuyên gia (Slide 6), không phải Transformer."},
+                {"id": "D", "text": "Gán ngẫu nhiên một con số từ 0 đến 100 giữa hai từ bất kỳ.", "is_correct": False, "feedback": "Không chính xác: Điểm tương quan được học qua hàng tỷ tham số trọng số ma trận."}
+            ]
+        },
+        22: {
+            "title": "Trang 22: Tham Số Vận Hành: Temperature & Tính Tất Định",
+            "summary": "System prompt là chỉ thị nền tảng. Temperature = 0 ưu tiên greedy decoding, kết quả nhất quán nhưng vẫn có thể sai khác vi mô trên GPU.",
+            "prior_page": 20,
+            "bridge_concept": "Toán học Softmax (Slide 20) ➔ Tham số Temperature biến điệu xác suất (Slide 22)",
+            "bridge_note": "Ở Slide 20, Softmax chia ra phân phối xác suất. Tại Slide 22, Temperature chia tỷ lệ logit trước Softmax: T thấp làm sắc nét phân phối, T cao làm phẳng phân phối.",
+            "citations": ["T04-089"],
+            "ai_question": "🔗 KẾT NỐI VỚI SLIDE 20: Khi đặt Temperature = 0 khi gọi API sinh văn bản, cơ chế chọn token tiếp theo từ hàm Softmax (Slide 20) sẽ diễn ra như thế nào?",
+            "options": [
+                {"id": "A", "text": "Mô hình luôn luôn chọn token có xác suất cao nhất tại đỉnh Softmax (Greedy Decoding), giảm tối đa tính ngẫu nhiên.", "is_correct": True, "feedback": "Chính xác! Temperature = 0 làm co cụm xác suất về token có logit cao nhất."},
+                {"id": "B", "text": "Mô hình tắt hoàn toàn mạng nơ-ron và tra cứu bảng câu trả lời có sẵn trong ổ cứng.", "is_correct": False, "feedback": "Sai lầm: Mô hình vẫn tính toán ma trận qua mọi tầng Transformer bình thường."},
+                {"id": "C", "text": "Mô hình quay số ngẫu nhiên hoàn toàn để chọn bất kỳ token nào trong từ điển.", "is_correct": False, "feedback": "Ngược lại: Đó là đặc điểm khi Temperature rất cao (T >= 1.5)."},
+                {"id": "D", "text": "Mô hình chỉ trả về một từ duy nhất rồi dừng phiên đàm thoại.", "is_correct": False, "feedback": "Không đúng: Model vẫn tiếp tục vòng lặp autoregressive cho đến khi gặp token dừng [EOS]."}
+            ]
+        },
+        25: {
+            "title": "Trang 25: Token Economy & Chi Phí Gọi API",
+            "summary": "Tổng chi phí = Input Tokens + Output Tokens. Lưu ý System Prompt và Context cũ được gửi lại trong mọi request.",
+            "prior_page": 22,
+            "bridge_concept": "System prompt & Temperature (Slide 22) ➔ Chi phí Token tích lũy (Slide 25)",
+            "bridge_note": "System prompt được định nghĩa ở Slide 22 sẽ trở thành chi phí Input Token tính tiền liên tục trong mỗi request ở Slide 25.",
+            "citations": ["T06-154", "T04-049"],
+            "ai_question": "🔗 KẾT NỐI VỚI SLIDE 12 & 22: Doanh nghiệp xây chatbot CSKH tiếng Việt có System Prompt dài 250 từ và phục vụ 10.000 lượt chat/ngày. Đâu là sai lầm nguy hiểm nhất khi ước lượng chi phí API?",
+            "options": [
+                {"id": "A", "text": "Bỏ quên chi phí System Prompt cho mỗi request và quên nhân hệ số sub-token ~1.35x cho tiếng Việt.", "is_correct": True, "feedback": "Tuyệt đối chính xác! Đây là 2 bẫy ngộ nhận lớn nhất khiến hóa đơn API đội lên gấp 2-3 lần thực tế."},
+                {"id": "B", "text": "Nghĩ rằng nhà cung cấp API sẽ miễn phí toàn bộ token tiếng Việt vào ban đêm.", "is_correct": False, "feedback": "Vô lý: API tính phí theo số lượng token thực tế xử lý 24/7."},
+                {"id": "C", "text": "Cho rằng chi phí Output Token luôn luôn rẻ hơn Input Token.", "is_correct": False, "feedback": "Sai: Hầu hết mọi mô hình (OpenAI, Anthropic, Gemini) đều tính Output đắt gấp 3 - 4 lần Input."},
+                {"id": "D", "text": "Tính tiền theo thời gian kết nối Wifi thay vì số token.", "is_correct": False, "feedback": "Sai cơ chế: LLM API tính tiền trên Token Economy, không tính theo đường truyền mạng."}
+            ]
+        }
+    }
+}
+
 # Tải chuỗi câu hỏi gợi nhớ kết nối slide từ tệp cấu hình bên ngoài (Data/vlearn-pack/preset_flows.json)
 def load_preset_flows(file_path: Path = PRESET_FLOWS_FILE) -> Dict[str, Dict[int, Any]]:
     """Đọc dữ liệu preset flows từ file json và chuẩn hóa số trang thành integer."""
@@ -170,10 +335,11 @@ def load_preset_flows(file_path: Path = PRESET_FLOWS_FILE) -> Dict[str, Dict[int
             flows = {}
             for deck, pages in raw_data.items():
                 flows[deck] = {int(p): flow for p, flow in pages.items()}
-            return flows
+            if flows:
+                return flows
         except Exception as e:
             print(f"[PedagogyService] Lỗi khi tải preset flows từ {file_path}: {e}")
-    return {}
+    return DEFAULT_PRESET_FLOWS
 
 PRESET_FLOWS = load_preset_flows()
 
@@ -707,7 +873,18 @@ class PedagogyService:
                 citations=rag_citations
             )
 
-        # 3. Ưu tiên gọi GPT-4o-mini qua OpenRouter kết hợp bối cảnh RAG
+        # Lấy các ngộ nhận chưa được giải quyết của học sinh để Agent cá nhân hóa câu trả lời Socratic
+        student_id = getattr(req, "student_id", "S0102") or "S0102"
+        unresolved_misc = misconception_logger.get_unresolved_for_student(student_id)
+        misc_context = ""
+        if unresolved_misc:
+            misc_items = "; ".join([
+                f"- '{m['faulty_assumption']}' (tại {m.get('slide_reference') or ('Slide ' + str(m.get('page')))})"
+                for m in unresolved_misc[:2]
+            ])
+            misc_context = f"\n\n[LƯU Ý SƯ PHẠM ĐẶC BIỆT CHO AI TUTOR]: Học viên {student_id} đang có các ngộ nhận chưa giải quyết:\n{misc_items}\nHãy khéo léo dùng câu hỏi gợi mở để giúp học viên nhận ra và đính chính ngộ nhận này, tuyệt đối không đưa ra đáp án trực tiếp!"
+
+        # 3. Ưu tiên gọi GPT-4o-mini qua OpenRouter kết hợp bối cảnh RAG và lịch sử ngộ nhận
         if openrouter_service.is_available():
             llm_reply = await openrouter_service.chat_socratic(
                 deck=req.deck,
@@ -715,7 +892,7 @@ class PedagogyService:
                 slide_text=slide_text,
                 question_text=q_text,
                 user_message=req.message,
-                transcript_context=transcript_context,
+                transcript_context=transcript_context + misc_context,
                 level=req.current_level
             )
             if llm_reply:

@@ -68,4 +68,9 @@ skill.md
 **/SKILL.md
 **/skill.md
 skills-lock.json
+*.json
+*.jsonl
+**/*.json
+**/*.jsonl
+backend/ai-log/
 

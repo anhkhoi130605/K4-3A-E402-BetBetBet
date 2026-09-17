@@ -28,7 +28,7 @@ if hasattr(sys.stdout, "reconfigure"):
     except Exception:
         pass
 
-from backend.config import SLIDES_DIR, TRANSCRIPT_DIR, OPENROUTER_API_KEY, EMBEDDING_MODEL, EMBEDDING_CACHE_FILE
+from backend.config import SLIDES_DIR, TRANSCRIPT_DIR, OPENROUTER_API_KEY, EMBEDDING_MODEL, EMBEDDING_CACHE_FILE, SLIDES_DATA_FILE
 
 VIETNAMESE_STOP_WORDS = {
     "là", "của", "và", "các", "có", "trong", "được", "cho", "với", "để", "thì", "khi",
@@ -231,11 +231,39 @@ class VectorSpaceRAG:
 class RAGService:
     def __init__(self):
         self.transcripts: Dict[str, dict] = {}
+        self.slides_data: Dict[str, dict] = {}
         self.slide_cache: Dict[str, Dict[int, str]] = {"d1": {}, "d2": {}}
         self._img_cache: Dict[str, bytes] = {}
         self.vector_engine: Optional[VectorSpaceRAG] = None
         self.dense_engine: DenseEmbeddingEngine = DenseEmbeddingEngine(api_key=OPENROUTER_API_KEY)
         self._load_transcripts()
+        self._load_slides_data()
+
+    def _load_slides_data(self):
+        """Nạp dữ liệu slides đã trích xuất sẵn từ JSON để làm offline fallback siêu tốc (< 1ms)"""
+        if SLIDES_DATA_FILE.exists():
+            try:
+                self.slides_data = json.loads(SLIDES_DATA_FILE.read_text(encoding="utf-8"))
+                d1_count = len(self.slides_data.get("d1", {}).get("pages", {}))
+                d2_count = len(self.slides_data.get("d2", {}).get("pages", {}))
+                print(f"[RAGService] Đã nạp slides_data.json: {d1_count} trang d1, {d2_count} trang d2 (Offline Fallback Ready).")
+            except Exception as e:
+                print(f"[RAGService] Lỗi nạp slides_data.json: {e}")
+
+    def get_total_pages(self, deck: str) -> int:
+        """Lấy tổng số trang của deck từ JSON hoặc từ PDF"""
+        if deck in self.slides_data and "total_pages" in self.slides_data[deck]:
+            return self.slides_data[deck]["total_pages"]
+        pdf_name = "d1-slide-hackathon.pdf" if deck == "d1" else "d2-slide-hackathon.pdf"
+        pdf_path = SLIDES_DIR / pdf_name
+        if pdf_path.exists():
+            try:
+                import pymupdf
+                doc = pymupdf.open(str(pdf_path))
+                return len(doc)
+            except Exception:
+                pass
+        return 29
 
     def _load_transcripts(self):
         """Index toàn bộ 700+ đoạn transcript sạch có gắn mã [Txx-NNN] và khởi tạo RAG Engines"""
@@ -265,9 +293,21 @@ class RAGService:
         return self.transcripts.get(citation_id)
 
     def extract_slide_page(self, deck: str, page: int) -> str:
+        # 1. Kiểm tra RAM cache
         if page in self.slide_cache.get(deck, {}):
             return self.slide_cache[deck][page]
 
+        # 2. Ưu tiên đọc từ slides_data.json (Offline Fallback siêu tốc < 1ms)
+        page_str = str(page)
+        deck_data = self.slides_data.get(deck, {}).get("pages", {})
+        if page_str in deck_data and "text" in deck_data[page_str]:
+            text = deck_data[page_str]["text"]
+            if deck not in self.slide_cache:
+                self.slide_cache[deck] = {}
+            self.slide_cache[deck][page] = text
+            return text
+
+        # 3. Fallback đọc trực tiếp từ PDF nếu chưa có trong JSON
         pdf_name = "d1-slide-hackathon.pdf" if deck == "d1" else "d2-slide-hackathon.pdf"
         pdf_path = SLIDES_DIR / pdf_name
         if not pdf_path.exists():

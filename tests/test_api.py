@@ -204,6 +204,57 @@ def test_theta_logging_options():
 
     print("[PASS] 10. Theta logging for user-selected options to logbythea.jsonl ok")
 
+def test_offline_slide_fallback():
+    # Kiểm tra nạp dữ liệu slide từ JSON offline siêu tốc
+    from backend.services.rag_service import rag_service
+    assert len(rag_service.slides_data) >= 2
+    d1_pages = rag_service.slides_data.get("d1", {}).get("pages", {})
+    assert len(d1_pages) >= 29
+    # Kiểm tra nội dung text của trang 12
+    text_p12 = rag_service.extract_slide_page("d1", 12)
+    assert len(text_p12) > 10
+    assert "token" in text_p12.lower()
+    # Kiểm tra API deck-info
+    res = client.get("/api/deck-info?deck=d1")
+    assert res.status_code == 200
+    assert res.json()["total_pages"] >= 29
+    print("[PASS] 11. Offline slide JSON fallback & deck-info ok")
+
+def test_teacher_misconceptions_flow():
+    # 1. Kiểm tra API lấy danh sách ngộ nhận cho Giáo viên
+    res = client.get("/api/teacher/misconceptions?limit=10")
+    assert res.status_code == 200
+    data = res.json()
+    assert "records" in data
+    assert "summary" in data
+    assert len(data["records"]) > 0
+
+    first_rec = data["records"][0]
+    rec_id = first_rec["id"]
+
+    # 2. Giáo viên thực hiện can thiệp hoặc ghi chú
+    action_res = client.post(f"/api/teacher/misconceptions/{rec_id}/action", json={
+        "action": "resolve",
+        "note": "Giáo viên đã giải thích trực tiếp cơ chế sub-token"
+    })
+    assert action_res.status_code == 200
+    act_data = action_res.json()
+    assert act_data["success"] is True
+    assert act_data["record"]["status"] == "teacher_intervened"
+    assert "sub-token" in act_data["record"]["teacher_note"]
+
+    # 3. Kiểm tra Agent nhận biết ngộ nhận trong luồng hỏi đáp
+    chat_res = client.post("/api/chat/ask", json={
+        "student_id": "S0102",
+        "deck": "d1",
+        "page": 12,
+        "message": "Tại sao lại cần quan tâm đến token?",
+        "current_level": 1
+    })
+    assert chat_res.status_code == 200
+    assert len(chat_res.json()["reply"]) > 10
+    print("[PASS] 12. Teacher misconception management & Agent integration ok")
+
 if __name__ == "__main__":
     test_health()
     test_slide_question()
@@ -215,5 +266,7 @@ if __name__ == "__main__":
     test_slide_image()
     test_auth()
     test_theta_logging_options()
-    print("\nSUCCESS: All 10+ verification tests passed perfectly!")
+    test_offline_slide_fallback()
+    test_teacher_misconceptions_flow()
+    print("\nSUCCESS: All 12 verification tests passed perfectly!")
 

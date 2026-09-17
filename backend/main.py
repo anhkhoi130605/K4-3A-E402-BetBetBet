@@ -39,6 +39,7 @@ from backend.services.analytics_service import (
 from backend.services.auth_service import auth_service
 from backend.services.openAI_service import openrouter_service
 from backend.services.logger_service import theta_logger
+from backend.services.misconception_log_service import misconception_logger
 
 app = FastAPI(
     title="VLearn Adaptive Learning API",
@@ -112,17 +113,8 @@ async def configure_openrouter(payload: Dict[str, str]):
 
 @app.get("/api/deck-info")
 async def get_deck_info(deck: str = Query("d1")):
-    """Trả về số lượng trang và thông tin cơ bản của bộ slide"""
-    pdf_name = "d1-slide-hackathon.pdf" if deck == "d1" else "d2-slide-hackathon.pdf"
-    pdf_path = SLIDES_DIR / pdf_name
-    total_pages = 29
-    if pdf_path.exists():
-        try:
-            import pymupdf
-            doc = pymupdf.open(str(pdf_path))
-            total_pages = len(doc)
-        except Exception:
-            pass
+    """Trả về số lượng trang và thông tin cơ bản của bộ slide (ưu tiên nạp từ slides_data.json)"""
+    total_pages = rag_service.get_total_pages(deck)
     return {
         "deck": deck,
         "total_pages": total_pages,
@@ -232,6 +224,26 @@ async def evaluate_answer(req: StudentAnswerRequest):
                 student["status"] = "Cần can thiệp" if new_theta < -0.5 else "Đang củng cố"
                 student["flagged"] = new_theta < -0.5
 
+        # Lưu vết ngộ nhận bền vững vào MisconceptionLogService cho Giáo viên và AI Agent
+        if result.diagnostic and result.diagnostic.is_misconception:
+            misconception_logger.record_misconception(
+                student_id=req.student_id or "S0102",
+                student_name=student.get("name") if student else f"Học viên {req.student_id or 'S0102'}",
+                deck=req.deck,
+                page=req.page,
+                faulty_assumption=result.diagnostic.faulty_assumption,
+                student_answer=req.answer_text,
+                citation_id=result.diagnostic.citation_id or "T04-049",
+                slide_reference=result.diagnostic.slide_reference or f"Slide {req.page}"
+            )
+        elif result.is_correct:
+            # Tự động chuyển trạng thái ngộ nhận sang remediated khi học sinh hiểu và làm đúng
+            misconception_logger.mark_remediated(
+                student_id=req.student_id or "S0102",
+                deck=req.deck,
+                page=req.page
+            )
+
         # Ghi log câu trả lời người dùng đã chọn kèm chỉ số theta cập nhật theo JSON vào file logbythea.jsonl
         theta_logger.log_answer(
             student_id=req.student_id,
@@ -268,6 +280,41 @@ async def get_theta_logs(limit: int = Query(50, ge=1, le=500)):
     return {
         "count": len(recent),
         "logs": recent
+    }
+
+# ================= TEACHER MISCONCEPTION MANAGEMENT =================
+@app.get("/api/teacher/misconceptions")
+async def get_teacher_misconceptions(
+    student_id: Optional[str] = Query(None, description="Lọc theo mã học sinh"),
+    status: Optional[str] = Query(None, description="Lọc theo trạng thái (unresolved / remediated / teacher_intervened)"),
+    limit: int = Query(100, ge=1, le=500, description="Số lượng bản ghi tối đa")
+):
+    """
+    Dành cho Giáo viên: Lấy danh sách toàn bộ các ngộ nhận học sinh đã mắc phải từ file lưu trữ bền vững.
+    Hỗ trợ lọc theo từng học sinh hoặc trạng thái đã khắc phục/chưa khắc phục.
+    """
+    records = misconception_logger.get_all_records(student_id=student_id, status=status, limit=limit)
+    stats = misconception_logger.get_misconception_stats()
+    return {
+        "count": len(records),
+        "records": records,
+        "summary": stats
+    }
+
+@app.post("/api/teacher/misconceptions/{record_id}/action")
+async def update_misconception_record(record_id: str, payload: Dict[str, Any]):
+    """
+    Dành cho Giáo viên: Can thiệp, ghi chú sư phạm hoặc đánh dấu đã hướng dẫn cho một ngộ nhận của học sinh.
+    """
+    action = payload.get("action", "resolve")
+    note = payload.get("note", "")
+    updated = misconception_logger.resolve_or_override(record_id=record_id, action=action, note=note)
+    if not updated:
+        raise HTTPException(status_code=404, detail=f"Không tìm thấy bản ghi ngộ nhận {record_id}")
+    return {
+        "success": True,
+        "message": f"Đã cập nhật ngộ nhận {record_id} thành công",
+        "record": updated
     }
 
 @app.post("/api/chat/ask", response_model=StudentChatResponse)
