@@ -30,6 +30,7 @@ class AnalyticsService:
                 "name": "Học viên S0102",
                 "level": 2,
                 "streak": 2,
+                "theta": 0.0,
                 "last_error": "Nhầm 1 từ tiếng Việt = 1 token",
                 "status": "Đang tiến bộ",
                 "flagged": False
@@ -39,6 +40,7 @@ class AnalyticsService:
                 "name": "Học viên S0448",
                 "level": 1,
                 "streak": 0,
+                "theta": 0.0,
                 "last_error": "Cho rằng Attention đọc tuần tự",
                 "status": "Cần can thiệp",
                 "flagged": True
@@ -48,6 +50,7 @@ class AnalyticsService:
                 "name": "Học viên S0912",
                 "level": 3,
                 "streak": 3,
+                "theta": 0.0,
                 "last_error": "Không",
                 "status": "Xuất sắc",
                 "flagged": False
@@ -57,6 +60,7 @@ class AnalyticsService:
                 "name": "Học viên S1205",
                 "level": 1,
                 "streak": 1,
+                "theta": 0.0,
                 "last_error": "Bỏ quên System Prompt khi tính bill",
                 "status": "Đang học lại bước 2",
                 "flagged": False

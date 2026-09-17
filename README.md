@@ -6,13 +6,13 @@
 
 ## 📌 1. Thông Số Dự Án
 
-| Hạng mục | Công nghệ / Giải pháp |
-| :--- | :--- |
-| **Backend** | Python 3.10+, FastAPI, Uvicorn |
-| **Frontend** | HTML5, CSS3, Vanilla JavaScript |
-| **LLM Engine** | `openai/gpt-4o-mini` (OpenRouter API) |
-| **Tri thức (Dual-RAG)** | Slide PDF + 700 đoạn Transcript bài giảng `[Txx-NNN]` |
-| **Phương pháp** | Socratic Probing + Productive Failure (Không chấm điểm số) |
+| Hạng mục | Công nghệ / Giải pháp                                                         |
+| :--- |:------------------------------------------------------------------------------|
+| **Backend** | Python 3.10+, FastAPI, Uvicorn                                                |
+| **Frontend** | HTML5, CSS3, Vanilla JavaScript                                               |
+| **LLM Engine** | `openai/gpt-4o-mini` (OpenAI API)                                             |
+| **Tri thức (Dual-RAG)** | Slide PDF + 700 đoạn Transcript bài giảng `[Txx-NNN]`                         |
+| **Phương pháp** | Socratic Probing + Productive Failure (Không chấm điểm số)                    |
 | **Thích ứng** | Bloom Taxonomy: Level 1 (Nhận biết) ➔ Level 2 (Vận dụng) ➔ Level 3 (Đánh giá) |
 
 ---
