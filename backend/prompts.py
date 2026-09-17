@@ -8,7 +8,7 @@ Contains:
 """
 
 import re
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 
 # ==============================================================================
 # 1. PEDAGOGICAL & INJECTION GUARDRAILS (Tiền kiểm tra an toàn)
@@ -107,15 +107,16 @@ def build_question_generator_prompt(
     slide_text: str,
     level: int = 1,
     prior_page: Optional[int] = None,
-    prior_concept: Optional[str] = None
+    prior_concept: Optional[str] = None,
+    misconceptions: Optional[List[Dict[str, Any]]] = None
 ) -> str:
-    """Xây dựng prompt sinh câu hỏi thích ứng theo thang Bloom Taxonomy với đủ 4 đáp án"""
+    """Xây dựng prompt sinh câu hỏi thích ứng theo thang Bloom Taxonomy với đủ 4 đáp án và chống học vẹt dựa trên ngộ nhận của giáo viên"""
     level_taxonomy = {
         1: {
             "name": "Level 1: Nhận biết & Củng cố nền tảng (Remembering / Understanding)",
             "guide": (
                 "Người học đang ở mức cơ bản hoặc vừa mắc lỗi ngộ nhận. "
-                "Hãy đặt câu hỏi trực quan, phân biệt rõ bản chất khái niệm cốt lõi so với ngộ nhận phổ biến để củng cố nền móng vững chắc."
+                "Hãy tạo một tình huống đơn giản, giúp học viên phân biệt rõ ràng giữa bản chất khái niệm cốt lõi so với ngộ nhận trực giác thông thường để củng cố nền móng."
             ),
             "focus": "Định nghĩa cốt lõi, cơ chế cơ bản, phân biệt đúng/sai trực quan."
         },
@@ -123,7 +124,7 @@ def build_question_generator_prompt(
             "name": "Level 2: Vận dụng thực tiễn & Tình huống (Applying / Analyzing)",
             "guide": (
                 "Người học đang có chuỗi tiến bộ tốt (đạt Streak). "
-                "Hãy đặt câu hỏi tình huống thực tế (case study bài giảng), yêu cầu tính toán số liệu cụ thể (ví dụ chi phí token, context window, ma trận attention)."
+                "Hãy đặt câu hỏi tình huống thực tế (novel case study), yêu cầu tính toán số liệu cụ thể (ví dụ: chi phí token thực tế, tràn context window, liên kết ma trận attention) để kiểm tra xem học viên có áp dụng được nguyên lý vào thực tế không."
             ),
             "focus": "Bài toán thực tế, tính toán tham số, ứng dụng vào luồng sản phẩm AI."
         },
@@ -131,13 +132,32 @@ def build_question_generator_prompt(
             "name": "Level 3: Phản biện chuyên sâu & Tối ưu hóa (Evaluating / Creating)",
             "guide": (
                 "Người học xuất sắc (Mastery). "
-                "Hãy đặt câu hỏi thử thách hóc búa về trade-offs kiến trúc, tối ưu chi phí token, rủi ro tràn context window, rủi ro hallucination hoặc tình huống ngoại lệ (edge-cases)."
+                "Hãy đặt câu hỏi thử thách hóc búa về trade-offs kiến trúc (Latency vs Cost vs Accuracy), rủi ro tràn context window, rủi ro hallucination hoặc tình huống ngoại lệ (edge-cases) phức tạp đòi hỏi tư duy phản biện đa chiều."
             ),
-            "focus": "Đánh đổi kiến trúc (Latency vs Cost vs Accuracy), kịch bản lỗi biên, giải pháp tối ưu production."
+            "focus": "Đánh đổi kiến trúc, kịch bản lỗi biên, giải pháp tối ưu production."
         }
     }
 
     tax = level_taxonomy.get(level, level_taxonomy[1])
+
+    # Trích xuất ngân hàng ngộ nhận mục tiêu của giáo viên để đưa vào prompt
+    misconception_section = ""
+    if misconceptions:
+        misconception_section = "\n[NGÂN HÀNG NGỘ NHẬN MỤC TIÊU CỦA GIÁO VIÊN CẦN ĐÁNH GIÁ (GROUND TRUTH)]:\n"
+        for i, m in enumerate(misconceptions, 1):
+            misconception_section += (
+                f"{i}. Chủ đề: {m.get('topic', 'Chung')}\n"
+                f"   - Ngộ nhận sai học viên hay mắc: \"{m.get('faulty_assumption', '')}\"\n"
+                f"   - Bản chất sư phạm đúng: {m.get('explanation', '')}\n"
+                f"   - Trích dẫn chuẩn: {m.get('citation', 'T04-049')}\n"
+            )
+        misconception_section += (
+            "\n[NGUYÊN TẮC THIẾT KẾ CÂU HỎI CHỐNG HỌC VẸT (ANTI-ROTE QUESTION DESIGN)]:\n"
+            "1. TUYỆT ĐỐI KHÔNG sao chép câu hỏi định nghĩa lý thuyết suông hoặc đề bài có sẵn trong sách giáo khoa để tránh việc học viên khóa sau học vẹt đáp án.\n"
+            "2. Hãy sáng tạo một TÌNH HUỐNG THỰC TẾ MỚI LẠ (Novel Scenario / Real-world Case Study) trong bài toán ứng dụng AI.\n"
+            "3. BẮT BUỘC cài cắm các ngộ nhận của giáo viên ở trên vào 2-3 phương án bẫy (distractors): các phương án sai phải phản ánh đúng cách suy nghĩ sai lầm mà học sinh thường hay mắc phải, sao cho học viên học vẹt hoặc hiểu hời hợt sẽ dễ bị sập bẫy.\n"
+            "4. Phương án đúng phải giải thích rõ bản chất sư phạm, không giải thích qua loa.\n"
+        )
 
     return f"""
 [BỐI CẢNH BÀI HỌC]:
@@ -146,7 +166,7 @@ def build_question_generator_prompt(
 \"\"\"{slide_text[:1200]}\"\"\"
 
 {f'- Slide trước đã học là Slide {prior_page} ({prior_concept}). Hãy tạo cầu nối liên kết từ slide trước sang slide này.' if prior_page else ''}
-
+{misconception_section}
 [ĐIỀU PHỐI ĐỘ KHÓ THEO NĂNG LỰC HỌC VIÊN - BLOOM TAXONOMY]:
 - Cấp độ hiện tại: {tax['name']}
 - Chỉ thị trọng tâm: {tax['guide']}
@@ -160,12 +180,12 @@ def build_question_generator_prompt(
   "summary": "Tóm tắt ngắn gọn khái niệm trong slide (1-2 câu)",
   "bridge_flow": "Slide {prior_page or page - 1} ➔ Slide {page}",
   "bridge_note": "Điểm liên kết lý thuyết cốt lõi (1 câu)",
-  "ai_question": "Câu hỏi gợi mở Socratic phù hợp với {tax['name']}?",
+  "ai_question": "Câu hỏi tình huống Socratic độc bản phù hợp với {tax['name']}?",
   "options": [
     {{"id": "A", "text": "Phương án đúng và chặt chẽ", "is_correct": true, "feedback": "Lời khen ngợi và củng cố kiến thức sâu"}},
-    {{"id": "B", "text": "Phương án bẫy ngộ nhận 1 (Misconception)", "is_correct": false, "feedback": "Chỉ ra vì sao cách nghĩ này là ngộ nhận"}},
-    {{"id": "C", "text": "Phương án bẫy ngộ nhận 2 / nhiễu kỹ thuật", "is_correct": false, "feedback": "Chỉ ra điểm sai sót về mặt kỹ thuật"}},
-    {{"id": "D", "text": "Phương án bẫy ngộ nhận 3 / hiểu nhầm kiến trúc", "is_correct": false, "feedback": "Giải thích vì sao cách tiếp cận này chưa đúng"}}
+    {{"id": "B", "text": "Phương án bẫy ngộ nhận 1 (Cài cắm ngộ nhận của giáo viên)", "is_correct": false, "feedback": "Chỉ ra vì sao cách nghĩ này là ngộ nhận theo thực tế"}},
+    {{"id": "C", "text": "Phương án bẫy ngộ nhận 2 (Trực giác sai lầm hoặc lỗi biên)", "is_correct": false, "feedback": "Chỉ ra điểm sai sót về mặt kỹ thuật/tính toán"}},
+    {{"id": "D", "text": "Phương án bẫy ngộ nhận 3 (Hiểu nhầm kiến trúc/quy chuẩn)", "is_correct": false, "feedback": "Giải thích vì sao cách tiếp cận này chưa đúng"}}
   ],
   "citations": ["T04-049"]
 }}
@@ -275,9 +295,25 @@ def build_evaluation_prompt(
         theta: float = 0.0,
         item_a: float = 1.0,
         item_b: float = 0.0,
-        item_c: float = 0.2
+        item_c: float = 0.2,
+        misconceptions: Optional[list] = None
 ) -> str:
-    """Xây dựng prompt đánh giá câu trả lời tích hợp ReAct, Function Calling và thông số Theta 3PL"""
+    """Xây dựng prompt đánh giá câu trả lời tích hợp ReAct, Semantic Misconception Classification và IRT 3PL Theta"""
+    misc_section = ""
+    if misconceptions:
+        misc_lines = []
+        for m in misconceptions:
+            misc_lines.append(f"- [{m.get('id', '')}] Giả định sai: \"{m.get('faulty_assumption', '')}\" | Giải thích: {m.get('explanation', '')}")
+        misc_section = f"""
+[NGÂN HÀNG NGỘ NHẬN CHUẨN HÓA (SEMANTIC MISCONCEPTION BANK)]:
+{chr(10).join(misc_lines)}
+
+[CHỈ THỊ PHÂN LOẠI NGỮ NGHĨA - SEMANTIC CLASSIFICATION]:
+Dựa trên ngữ nghĩa và chuỗi lập luận của học viên (không phụ thuộc vào câu chữ trùng khớp từng từ):
+- Nếu học viên thể hiện một trong các ngộ nhận trên: hãy gán "is_misconception": true, gán đúng "faulty_assumption" từ danh sách trên, và đưa ra gợi ý Socratic để học viên tự nhận ra điểm mâu thuẫn.
+- Nếu học viên sai theo cách khác ngoài ngân hàng: gán "is_misconception": false, "faulty_assumption": null.
+"""
+
     return f"""
 {FEW_SHOT_EVALUATION_EXAMPLES}
 
@@ -288,6 +324,7 @@ def build_evaluation_prompt(
 - Câu trả lời của học viên: \"\"\"{student_answer}\"\"\"
 - Trạng thái học viên: Cấp độ hiện tại = Level {current_level}, Chuỗi đúng Streak = {current_streak}
 - Mô hình 3PL hiện tại: theta = {theta}, a = {item_a}, b = {item_b}, c = {item_c}
+{misc_section}
  
 [YÊU CẦU ĐÁNH GIÁ THEO CHUỖI REACT]:
 Hãy phân tích chuỗi tư duy (thought) ➔ hành động function calling (action) ➔ quan sát kết quả hàm (observation) ➔ phán quyết sư phạm theo thông số theta (pedagogical_decision).
@@ -296,7 +333,7 @@ QUY TẮC CỐT LÕI: Tuyệt đối KHÔNG tự ý phán đoán điểm số/c�
 Trả về JSON DUY NHẤT:
 {{
   "reasoning": {{
-    "thought": "Chuỗi phân tích logic tư duy của học viên, xác định đúng/sai và ngộ nhận nếu có",
+    "thought": "Chuỗi phân tích logic tư duy của học viên, xác định đúng/sai và ngộ nhận ngữ nghĩa nếu có",
     "action": "call_function update_theta(theta={theta}, is_correct=..., a={item_a}, b={item_b}, c={item_c})",
     "observation": "Giá trị P(theta) từ hàm p3pl và new_theta thu được sau khi gọi hàm",
     "pedagogical_decision": "Phán quyết sư phạm dựa trực tiếp trên thông số theta vừa cập nhật"
@@ -310,3 +347,4 @@ Trả về JSON DUY NHẤT:
   "review_slide": {page}
 }}
 """
+

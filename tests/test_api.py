@@ -56,6 +56,30 @@ def test_misconception_detection():
     assert data["should_scaffold"] is True
     print("[PASS] 3. Misconception diagnostic & citation [T04-049] ok")
 
+def test_semantic_misconception_matching():
+    # Kiểm tra so khớp ngữ nghĩa Semantic Vector Matching (không dùng từ khóa cứng)
+    res = client.post("/api/chat/evaluate", json={
+        "student_id": "S0102",
+        "deck": "d1",
+        "page": 18,
+        "answer_text": "Transformer đọc từng từ từ trái qua phải theo thời gian nên các câu dài vẫn bị rơi rụng ngữ cảnh",
+        "current_level": 1,
+        "current_streak": 0,
+        "theta": 0.0,
+        "item_a": 1.4,
+        "item_b": 0.3,
+        "item_c": 0.15
+    })
+    assert res.status_code == 200
+    data = res.json()
+    assert data["is_correct"] is False
+    assert data["diagnostic"] is not None
+    assert data["diagnostic"]["is_misconception"] is True
+    assert "Transformer" in data["diagnostic"]["faulty_assumption"] or "tuần tự" in data["diagnostic"]["faulty_assumption"]
+    assert data["diagnostic"]["citation_id"] == "T06-086"
+    print("[PASS] 3b. Semantic Vector Misconception Matching [T06-086] ok")
+
+
 def test_adaptive_difficulty():
     # Khối 3: Thăng cấp độ khó khi streak >= 2
     res = client.post("/api/chat/evaluate", json={
@@ -184,11 +208,12 @@ if __name__ == "__main__":
     test_health()
     test_slide_question()
     test_misconception_detection()
+    test_semantic_misconception_matching()
     test_adaptive_difficulty()
     test_instructor_dashboard_and_override()
     test_static_files()
     test_slide_image()
     test_auth()
     test_theta_logging_options()
-    print("\nSUCCESS: All 10 verification tests passed perfectly!")
+    print("\nSUCCESS: All 10+ verification tests passed perfectly!")
 

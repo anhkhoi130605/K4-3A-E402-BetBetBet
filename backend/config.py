@@ -16,6 +16,9 @@ SURVEY_FILE = BASE_DIR / "Untitled form.csv"
 MOCKUP_DIR = BASE_DIR / "mockup"
 AI_LOG_DIR = BASE_DIR / "backend" / "ai-log"
 LOG_BY_THETA_FILE = AI_LOG_DIR / "logbythea.jsonl"
+MISCONCEPTIONS_FILE = DATA_DIR / "misconceptions.json"
+PRESET_FLOWS_FILE = DATA_DIR / "preset_flows.json"
+
 
 # Load from .env if present
 ENV_FILE = BASE_DIR / ".env"
