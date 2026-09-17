@@ -20,6 +20,7 @@ MISCONCEPTIONS_FILE = DATA_DIR / "misconceptions.json"
 PRESET_FLOWS_FILE = DATA_DIR / "preset_flows.json"
 SLIDES_DATA_FILE = DATA_DIR / "slides_data.json"
 STUDENT_MISCONCEPTIONS_FILE = AI_LOG_DIR / "student_misconceptions.json"
+LEARNER_MEMORY_FILE = AI_LOG_DIR / "student_memories.json"
 
 
 # Load from .env if present
