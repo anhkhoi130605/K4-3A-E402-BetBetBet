@@ -41,7 +41,11 @@ def test_misconception_detection():
         "page": 12,
         "answer_text": "Tôi nghĩ 120 từ tiếng Việt bằng đúng 120 token như tiếng Anh",
         "current_level": 1,
-        "current_streak": 0
+        "current_streak": 0,
+        "theta": 0.0,
+        "item_a": 1.0,
+        "item_b": 0.0,
+        "item_c": 0.2
     })
     assert res.status_code == 200
     data = res.json()
@@ -60,7 +64,11 @@ def test_adaptive_difficulty():
         "page": 12,
         "answer_text": "Phải nhân hệ số 1.35x vì tiếng Việt có dấu thanh tách sub-token",
         "current_level": 1,
-        "current_streak": 1
+        "current_streak": 1,
+        "theta": 0.0,
+        "item_a": 1.0,
+        "item_b": 0.0,
+        "item_c": 0.2
     })
     assert res.status_code == 200
     data = res.json()

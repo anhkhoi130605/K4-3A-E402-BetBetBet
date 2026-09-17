@@ -31,6 +31,7 @@ class StudentAnswerRequest(BaseModel):
     answer_text: str = Field(..., example="Tôi nghĩ 120 từ tiếng Việt bằng 120 token giống tiếng Anh.")
     current_level: int = Field(1, example=1)
     current_streak: int = Field(0, example=0)
+    is_option_correct: Optional[bool] = None
 
     theta: Optional[float] = Field(0.0, example=0.0)
     item_a: Optional[float] = Field(1.0, example=1.0)
