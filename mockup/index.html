@@ -117,120 +117,169 @@
       </div>
     </section>
 
-    <!-- ================= VIEW 2: GIẢNG VIÊN (ĐƠN GIẢN, GỌN GÀNG) ================= -->
+    <!-- ================= VIEW 2: GIẢNG VIÊN (TỐI GIẢN, TINH TẾ) ================= -->
     <section id="instructor-view" class="view-pane">
       <div class="instructor-container">
-        <!-- 4 thẻ KPI ngắn gọn -->
-        <div class="kpi-grid">
-          <div class="kpi-card kpi-danger">
-            <div class="kpi-card-header">
-              <span class="kpi-title">Học viên kẹt áp dụng</span>
-              <span class="kpi-badge">Critical</span>
+        
+        <!-- THANH CHUYỂN TAB TỐI GIẢN -->
+        <div class="instructor-tab-nav">
+          <button type="button" class="inst-tab-btn active" data-inst-tab="tab-overview">📊 Tổng quan & Can thiệp</button>
+          <button type="button" class="inst-tab-btn" data-inst-tab="tab-logs">📜 Nhật ký AI & Theta <span id="theta-tab-badge" style="font-size: 0.68rem; background: rgba(99,102,241,0.25); color: #a5b4fc; padding: 1px 6px; border-radius: 10px; margin-left: 4px;">0</span></button>
+        </div>
+
+        <!-- TAB 1: TỔNG QUAN & CAN THIỆP -->
+        <div id="inst-tab-overview" class="inst-tab-content active">
+          <!-- 4 thẻ KPI ngắn gọn -->
+          <div class="kpi-grid">
+            <div class="kpi-card kpi-danger">
+              <div class="kpi-card-header">
+                <span class="kpi-title">Kẹt áp dụng</span>
+                <span class="kpi-badge">Critical</span>
+              </div>
+              <div class="kpi-num red">45.1%</div>
+              <div class="kpi-desc">Hiểu lý thuyết, khó làm bài</div>
             </div>
-            <div class="kpi-num red">45.1%</div>
-            <div class="kpi-desc">Hiểu lý thuyết nhưng khó làm bài tập</div>
+            <div class="kpi-card kpi-warning">
+              <div class="kpi-card-header">
+                <span class="kpi-title">Lỗi ngộ nhận</span>
+                <span class="kpi-badge">High</span>
+              </div>
+              <div class="kpi-num orange">33.3%</div>
+              <div class="kpi-desc">Hiểu mơ hồ, nhầm giả định</div>
+            </div>
+            <div class="kpi-card kpi-success">
+              <div class="kpi-card-header">
+                <span class="kpi-title">Nhu cầu Socratic</span>
+                <span class="kpi-badge">Engaged</span>
+              </div>
+              <div class="kpi-num green">76.9%</div>
+              <div class="kpi-desc">Muốn AI vặn ngược tư duy</div>
+            </div>
+            <div class="kpi-card kpi-accent">
+              <div class="kpi-card-header">
+                <span class="kpi-title">Số ca can thiệp</span>
+                <span class="kpi-badge">Active</span>
+              </div>
+              <div class="kpi-num yellow" id="kpi-override-count">1</div>
+              <div class="kpi-desc">Đã xử lý can thiệp</div>
+            </div>
           </div>
-          <div class="kpi-card kpi-warning">
-            <div class="kpi-card-header">
-              <span class="kpi-title">Lỗi ngộ nhận</span>
-              <span class="kpi-badge">High</span>
+
+          <div class="instructor-grid" style="margin-top: 14px;">
+            <!-- Bảng Heatmap & Roster -->
+            <div class="inst-card">
+              <div class="card-heading">
+                <span>🔥 Điểm nghẽn ngộ nhận</span>
+              </div>
+              <table class="simple-table">
+                <thead>
+                  <tr>
+                    <th>Chủ đề</th>
+                    <th>Số HV</th>
+                    <th>Tỷ lệ</th>
+                    <th>Mức độ</th>
+                  </tr>
+                </thead>
+                <tbody id="heatmap-body"></tbody>
+              </table>
+
+              <div class="card-heading" style="margin-top: 22px;">
+                <span>👥 Danh sách học viên</span>
+              </div>
+              <table class="simple-table">
+                <thead>
+                  <tr>
+                    <th>Mã HV</th>
+                    <th>Cấp độ</th>
+                    <th>Chuỗi</th>
+                    <th>Lỗi gần nhất</th>
+                    <th>Trạng thái</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody id="roster-body"></tbody>
+              </table>
             </div>
-            <div class="kpi-num orange">33.3%</div>
-            <div class="kpi-desc">Hiểu mơ hồ, nhầm giả định cốt lõi</div>
-          </div>
-          <div class="kpi-card kpi-success">
-            <div class="kpi-card-header">
-              <span class="kpi-title">Nhu cầu Socratic</span>
-              <span class="kpi-badge">Engaged</span>
+
+            <!-- Can thiệp nhanh -->
+            <div class="inst-card override-panel">
+              <div class="card-heading">
+                <span>🛠️ Can thiệp Socratic</span>
+              </div>
+
+              <div class="form-group">
+                <label>Học viên:</label>
+                <input type="text" id="override-student-id" class="form-input" value="S0448" readonly />
+              </div>
+
+              <div class="form-group">
+                <label>Lỗi hiện tại:</label>
+                <input type="text" id="override-student-error" class="form-input" value="Cho rằng Attention đọc tuần tự" readonly />
+              </div>
+
+              <div class="form-group">
+                <label>Hành động:</label>
+                <select id="override-action-select" class="form-select">
+                  <option value="relabel">Đổi nhãn: Hiểu đúng Self-Attention song song</option>
+                  <option value="scaffold">Hạ cấp gợi ý (chia bước nhỏ)</option>
+                  <option value="cleared">Đã đạt yêu cầu (xóa cờ cảnh báo)</option>
+                </select>
+              </div>
+
+              <div class="form-group">
+                <label>Ghi chú cho học viên:</label>
+                <textarea id="override-notes" class="form-textarea" rows="3" placeholder="Nhập lời dặn..."></textarea>
+              </div>
+
+              <button id="btn-submit-override" class="btn-primary">
+                Lưu can thiệp
+              </button>
             </div>
-            <div class="kpi-num green">76.9%</div>
-            <div class="kpi-desc">Muốn AI hỏi ngược để hiểu bản chất</div>
-          </div>
-          <div class="kpi-card kpi-accent">
-            <div class="kpi-card-header">
-              <span class="kpi-title">Số ca can thiệp</span>
-              <span class="kpi-badge">Active</span>
-            </div>
-            <div class="kpi-num yellow" id="kpi-override-count">1</div>
-            <div class="kpi-desc">Giảng viên đã ghi đè kịch bản</div>
           </div>
         </div>
 
-        <div class="instructor-grid">
-          <!-- Bảng Heatmap điểm nghẽn của lớp -->
-          <div class="inst-card">
-            <div class="card-heading">
-              <span>🔥 Điểm nghẽn phổ biến của lớp</span>
-            </div>
-            <table class="simple-table">
-              <thead>
-                <tr>
-                  <th>Chủ đề ngộ nhận</th>
-                  <th>Số HV</th>
-                  <th>Tỷ lệ</th>
-                  <th>Mức độ</th>
-                </tr>
-              </thead>
-              <tbody id="heatmap-body">
-                <!-- Render từ data -->
-              </tbody>
-            </table>
-
-            <div class="card-heading" style="margin-top: 20px;">
-              <span>👥 Danh sách học viên</span>
-            </div>
-            <table class="simple-table">
-              <thead>
-                <tr>
-                  <th>Mã HV</th>
-                  <th>Cấp độ</th>
-                  <th>Chuỗi</th>
-                  <th>Lỗi gần nhất</th>
-                  <th>Trạng thái</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody id="roster-body">
-                <!-- Render từ data -->
-              </tbody>
-            </table>
-          </div>
-
-          <!-- Can thiệp & ghi đè của GV -->
-          <div class="inst-card override-panel">
-            <div class="card-heading">
-              <span>🛠️ Can thiệp kịch bản Socratic</span>
+        <!-- TAB 2: NHẬT KÝ AI & THETA (TỐI GIẢN) -->
+        <div id="inst-tab-logs" class="inst-tab-content" style="display: none;">
+          <div class="inst-card full-width-card">
+            <div class="card-heading" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+              <div style="display: flex; align-items: center; gap: 10px;">
+                <span>📜 Nhật ký AI Socratic & Năng lực Theta</span>
+                <span id="theta-log-count" class="badge-count" style="font-size: 0.72rem; background: rgba(99,102,241,0.2); color: #818cf8; border: 1px solid rgba(99,102,241,0.3); padding: 2px 8px; border-radius: 9999px;">0 sự kiện</span>
+              </div>
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <select id="theta-filter-student" class="deck-select" style="padding: 4px 28px 4px 10px; font-size: 0.78rem;">
+                  <option value="">Tất cả học viên</option>
+                </select>
+                <select id="theta-filter-event" class="deck-select" style="padding: 4px 28px 4px 10px; font-size: 0.78rem;">
+                  <option value="">Tất cả sự kiện</option>
+                  <option value="answer_evaluated">Chỉ lượt chấm điểm</option>
+                  <option value="question_asked">Chỉ lượt sinh câu hỏi</option>
+                </select>
+                <button id="btn-refresh-theta-log" class="btn-zoom" style="padding: 5px 12px; font-size: 0.78rem; font-weight: 600;">Làm mới 🔄</button>
+              </div>
             </div>
 
-            <div class="form-group">
-              <label>Học viên:</label>
-              <input type="text" id="override-student-id" class="form-input" value="S0448" readonly />
+            <div style="max-height: 520px; overflow-y: auto; overflow-x: auto; margin-top: 10px; border-radius: 8px; border: 1px solid var(--border);">
+              <table class="simple-table log-table">
+                <thead>
+                  <tr>
+                    <th style="min-width: 75px;">Thời gian</th>
+                    <th style="min-width: 110px;">Học viên · Slide</th>
+                    <th style="min-width: 95px;">Sự kiện</th>
+                    <th style="min-width: 260px;">Nội dung / Câu trả lời</th>
+                    <th style="min-width: 80px;">Kết quả</th>
+                    <th style="min-width: 150px;">Biến thiên Theta θ</th>
+                    <th style="min-width: 70px; text-align: center;">Thao tác</th>
+                  </tr>
+                </thead>
+                <tbody id="theta-log-body">
+                  <tr><td colspan="7" style="text-align: center; color: #94a3b8; padding: 20px;">Đang tải dữ liệu log...</td></tr>
+                </tbody>
+              </table>
             </div>
-
-            <div class="form-group">
-              <label>Lỗi hiện tại:</label>
-              <input type="text" id="override-student-error" class="form-input" value="Cho rằng Attention đọc tuần tự" readonly />
-            </div>
-
-            <div class="form-group">
-              <label>Hành động:</label>
-              <select id="override-action-select" class="form-select">
-                <option value="relabel">Đổi nhãn: Hiểu đúng Self-Attention song song</option>
-                <option value="scaffold">Hạ cấp gợi ý (chia bước nhỏ)</option>
-                <option value="cleared">Đã đạt yêu cầu (xóa cờ cảnh báo)</option>
-              </select>
-            </div>
-
-            <div class="form-group">
-              <label>Ghi chú cho học viên:</label>
-              <textarea id="override-notes" class="form-textarea" rows="3" placeholder="Nhập lời dặn..."></textarea>
-            </div>
-
-            <button id="btn-submit-override" class="btn-primary">
-              Lưu can thiệp
-            </button>
           </div>
         </div>
+
       </div>
     </section>
 
