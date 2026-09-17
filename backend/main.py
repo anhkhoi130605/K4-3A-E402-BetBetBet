@@ -29,9 +29,16 @@ from backend.models.schemas import (
 )
 from backend.services.rag_service import rag_service
 from backend.services.pedagogy_service import pedagogy_service
-from backend.services.analytics_service import analytics_service
+from backend.services.analytics_service import (
+    analytics_service,
+    sigmoid,
+    p3pl,
+    update_theta,
+    evaluate_learner_by_theta
+)
 from backend.services.auth_service import auth_service
 from backend.services.openAI_service import openrouter_service
+from backend.services.logger_service import theta_logger
 
 app = FastAPI(
     title="VLearn Adaptive Learning API",
@@ -128,14 +135,45 @@ async def get_deck_info(deck: str = Query("d1")):
 async def get_slide_question(
     deck: str = Query("d1", description="Slide deck ID (d1 hoặc d2)"),
     page: int = Query(12, ge=1, le=100, description="Số trang slide hiện tại"),
-    level: int = Query(1, ge=1, le=3, description="Cấp độ nhận thức học viên (1: Cơ bản, 2: Vận dụng, 3: Chuyên sâu)")
+    level: int = Query(1, ge=1, le=3, description="Cấp độ nhận thức học viên (1: Cơ bản, 2: Vận dụng, 3: Chuyên sâu)"),
+    student_id: Optional[str] = Query("S0102", description="Mã học viên"),
+    theta: Optional[float] = Query(None, description="Chỉ số năng lực theta hiện tại")
 ):
     """
     Khối 1: Gợi nhớ kiến thức slide cũ bắc cầu sang slide/bài tập hiện tại
     Tự động sinh câu hỏi thích ứng theo năng lực học viên bằng GPT-4o-mini hoặc RAG fallback
+    Đồng thời ghi log câu hỏi và chỉ số theta vào file backend/ai-log/logbythea.jsonl
     """
     try:
-        return await pedagogy_service.get_slide_question(deck=deck, page=page, level=level)
+        res = await pedagogy_service.get_slide_question(deck=deck, page=page, level=level)
+
+        # Lấy chỉ số theta hiện tại của người học
+        current_theta = theta
+        if current_theta is None:
+            student = analytics_service.students.get(student_id or "S0102")
+            if student and "theta" in student:
+                current_theta = float(student["theta"])
+            else:
+                current_theta = 0.0
+
+        q_key = f"{deck}:{page}"
+        item_params = QUESTION_PARAMS.get(q_key, {"a": 1.0, "b": 0.0, "c": 0.2})
+        source_name = getattr(res, "source", None) or ("LLM (GPT-4o-mini)" if openrouter_service.is_available() else "preset")
+
+        # Ghi log câu hỏi kèm chỉ số theta hiện tại
+        theta_logger.log_question(
+            student_id=student_id or "S0102",
+            deck=deck,
+            page=page,
+            level=level,
+            theta=current_theta,
+            question_text=res.ai_question,
+            options=res.options,
+            item_params=item_params,
+            source=source_name
+        )
+
+        return res
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Lỗi truy xuất câu hỏi slide: {str(e)}")
 
@@ -152,69 +190,85 @@ QUESTION_PARAMS = {
 }
 
 
-def sigmoid(x: float) -> float:
-    return 1.0 / (1.0 + math.exp(-x))
-
-
-def p3pl(theta: float, a: float, b: float, c: float) -> float:
-    z = a * (theta - b)
-    g = sigmoid(z)
-    return c + (1 - c) * g
-
-
-def update_theta(theta: float, is_correct: bool, a: float, b: float, c: float, lr: float = 0.25) -> float:
-    a = max(float(a), 0.1)
-    c = min(max(float(c), 0.0), 0.8)
-    p = p3pl(theta, a, b, c)
-    y = 1.0 if is_correct else 0.0
-
-    g = sigmoid(a * (theta - b))
-    dP = (1 - c) * a * g * (1 - g)
-    new_theta = theta + lr * (y - p) * dP
-    return float(new_theta)
-
-
 @app.post("/api/chat/evaluate", response_model=AnswerEvaluationResponse)
 async def evaluate_answer(req: StudentAnswerRequest):
     """
-    Khối 1 & 2 & 3: Đánh giá câu trả lời học viên bằng GPT-4o-mini / Misconception Bank
+    Khối 1 & 2 & 3: Đánh giá câu trả lời học viên bằng ReAct Pattern và thông số IRT 3PL Theta
+    Đồng thời ghi log câu trả lời của người dùng và cập nhật chỉ số theta vào file backend/ai-log/logbythea.jsonl
     """
     try:
+        # Tự động gán tham số 3PL của câu hỏi nếu chưa truyền lên
+        q_key = f"{req.deck}:{req.page}"
+        params = QUESTION_PARAMS.get(q_key, {"a": 1.0, "b": 0.0, "c": 0.2})
+        if req.item_a is None:
+            req.item_a = float(params["a"])
+        if req.item_b is None:
+            req.item_b = float(params["b"])
+        if req.item_c is None:
+            req.item_c = float(params["c"])
+
+        student = analytics_service.students.get(req.student_id)
+        if student and (req.theta is None or req.theta == 0.0):
+            req.theta = float(student.get("theta", 0.0))
+
+        theta_before = float(req.theta or 0.0)
         result = await pedagogy_service.evaluate_answer(req)
 
-        # Cập nhật trạng thái học viên vào bộ nhớ
-        student = analytics_service.students.get(req.student_id)
+        # Cập nhật trạng thái học viên vào bộ nhớ dựa trên kết quả tính toán thông số theta
+        new_theta = result.new_theta if result.new_theta is not None else theta_before
         if student:
-            theta = float(req.theta) if req.theta is not None else float(student.get("theta", 0.0))
-            q_key = f"{req.deck}:{req.page}"
-            params = QUESTION_PARAMS.get(q_key, {"a": 1.0, "b": 0.0, "c": 0.2})
-            item_a = float(req.item_a) if req.item_a is not None else float(params["a"])
-            item_b = float(req.item_b) if req.item_b is not None else float(params["b"])
-            item_c = float(req.item_c) if req.item_c is not None else float(params["c"])
-
-            new_theta = update_theta(theta, result.is_correct, item_a, item_b, item_c, lr=0.25)
             student["theta"] = new_theta
             student["level"] = result.new_level
             student["streak"] = result.new_streak
 
-            if new_theta < -1.0:
-                student["level"] = 1
-            elif new_theta < 1.0:
-                student["level"] = 2
-            else:
-                student["level"] = 3
-
             if result.diagnostic and result.diagnostic.is_misconception:
                 student["last_error"] = result.diagnostic.faulty_assumption
                 student["flagged"] = True
-                student["status"] = "Cần hỗ trợ"
+                student["status"] = "Cần can thiệp"
             elif result.is_correct:
-                student["status"] = "Tiến bộ tốt"
+                student["status"] = "Xuất sắc" if new_theta >= 1.0 else "Tiến bộ tốt"
                 student["flagged"] = False
+            else:
+                student["status"] = "Cần can thiệp" if new_theta < -0.5 else "Đang củng cố"
+                student["flagged"] = new_theta < -0.5
+
+        # Ghi log câu trả lời người dùng đã chọn kèm chỉ số theta cập nhật theo JSON vào file logbythea.jsonl
+        theta_logger.log_answer(
+            student_id=req.student_id,
+            deck=req.deck,
+            page=req.page,
+            question_text=req.question_text or f"Câu hỏi kiểm tra Slide {req.page}",
+            selected_option_id=req.selected_option_id,
+            answer_text=req.answer_text,
+            is_correct=result.is_correct,
+            score=result.score,
+            grade=result.grade,
+            theta_before=theta_before,
+            theta_after=new_theta,
+            p3pl_prob=result.p3pl_prob,
+            item_params=params,
+            level_before=req.current_level,
+            level_after=result.new_level,
+            streak_before=req.current_streak,
+            streak_after=result.new_streak,
+            feedback=result.feedback,
+            diagnostic=result.diagnostic,
+            reasoning=result.reasoning
+        )
 
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Lỗi đánh giá câu trả lời: {str(e)}")
+
+
+@app.get("/api/ai-log/thea")
+async def get_theta_logs(limit: int = Query(50, ge=1, le=500)):
+    """Lấy danh sách log câu hỏi và chỉ số theta từ backend/ai-log/logbythea.jsonl"""
+    recent = theta_logger.get_recent_logs(limit)
+    return {
+        "count": len(recent),
+        "logs": recent
+    }
 
 @app.post("/api/chat/ask", response_model=StudentChatResponse)
 async def ask_tutor(req: StudentChatRequest):

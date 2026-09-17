@@ -6,6 +6,7 @@ Implements Block 4 of Sequence Diagram:
 - Instructor intervention & override engine
 """
 
+import math
 from typing import Dict, List, Any, Optional
 import pandas as pd
 from backend.config import SURVEY_FILE, CHATLOG_DIR
@@ -16,6 +17,115 @@ from backend.models.schemas import (
     StudentRosterItem,
     InstructorOverrideRequest
 )
+
+# ==============================================================================
+# IRT 3PL (3-Parameter Logistic) & THETA ASSESSMENT ENGINE
+# Đánh giá người học bằng thông số năng lực theta toán học, không để LLM tự cảm tính
+# ==============================================================================
+
+def sigmoid(x: float) -> float:
+    return 1.0 / (1.0 + math.exp(-x))
+
+def p3pl(theta: float, a: float, b: float, c: float) -> float:
+    z = a * (theta - b)
+    g = sigmoid(z)
+    return c + (1.0 - c) * g
+
+def update_theta(theta: float, is_correct: bool, a: float, b: float, c: float, lr: float = 0.25) -> float:
+    a = max(float(a), 0.1)
+    c = min(max(float(c), 0.0), 0.8)
+    p = p3pl(theta, a, b, c)
+    y = 1.0 if is_correct else 0.0
+
+    g = sigmoid(a * (theta - b))
+    dP = (1.0 - c) * a * g * (1.0 - g)
+    new_theta = theta + lr * (y - p) * dP
+    return float(new_theta)
+
+def evaluate_learner_by_theta(
+    theta: float,
+    is_correct: bool,
+    a: float,
+    b: float,
+    c: float,
+    current_level: int = 1,
+    current_streak: int = 0,
+    lr: float = 0.25
+) -> Dict[str, Any]:
+    """
+    Đánh giá năng lực người học hoàn toàn dựa trên mô hình toán học IRT 3PL và thông số theta.
+    Tuyệt đối không để LLM phán đoán cảm tính cấp độ, điểm số hay năng lực.
+    """
+    p = p3pl(theta, a, b, c)
+    new_theta = update_theta(theta, is_correct, a, b, c, lr=lr)
+    
+    new_streak = current_streak + 1 if is_correct else 0
+    
+    # Xác định cấp độ (Level 1, 2, 3) dựa trên thông số new_theta và streak
+    if new_theta >= 0.8:
+        new_level = 3
+    elif new_theta >= -0.1:
+        if current_level == 1 and is_correct and (new_theta > theta or new_streak >= 1):
+            new_level = 2
+        elif current_level == 3 and not is_correct and new_theta < 0.5:
+            new_level = 2
+        else:
+            new_level = max(current_level, 2) if is_correct else current_level
+    else:
+        new_level = 1
+
+    should_level_up = (new_level > current_level)
+    should_scaffold = (not is_correct) or (new_theta < -0.3)
+    
+    # Điểm số phản ánh độ khó câu hỏi (b), xác suất đoán đúng P(theta), và kết quả y
+    if is_correct:
+        score = min(100, max(80, int(80 + 20 * (1.0 - p))))
+        grade = "Xuất sắc (Nắm vững bản chất)" if new_theta >= 0.5 else "Đạt yêu cầu (Tiến bộ)"
+        status = "Xuất sắc" if new_theta >= 1.0 else "Tiến bộ tốt"
+    else:
+        score = max(30, min(60, int(50 - 20 * p)))
+        grade = "Cần củng cố (Lỗi ngộ nhận)" if should_scaffold else "Chưa hoàn chỉnh"
+        status = "Cần can thiệp" if new_theta < -0.5 else "Đang củng cố"
+
+    return {
+        "theta": round(float(theta), 4),
+        "new_theta": round(float(new_theta), 4),
+        "p3pl_prob": round(float(p), 4),
+        "new_level": int(new_level),
+        "new_streak": int(new_streak),
+        "should_level_up": bool(should_level_up),
+        "should_scaffold": bool(should_scaffold),
+        "score": int(score),
+        "grade": grade,
+        "status": status,
+        "reasoning_observation": f"Hàm 3PL tính xác suất đoán đúng P(theta)={round(p, 3)}. Thông số theta cập nhật từ {round(theta, 3)} -> {round(new_theta, 3)} (độ khó b={b}, độ phân biệt a={a}).",
+        "pedagogical_decision": (
+            f"Dựa trên thông số theta={round(new_theta, 3)}: Người học đạt {grade}, "
+            + (f"đủ điều kiện thăng cấp lên Level {new_level}." if should_level_up else f"xếp ở Level {new_level}.")
+            if is_correct
+            else f"Dựa trên thông số theta={round(new_theta, 3)}: Năng lực giảm, giữ Level {new_level} và kích hoạt giàn giáo Socratic để khắc phục ngộ nhận."
+        )
+    }
+
+UPDATE_THETA_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "update_theta_and_evaluate",
+        "description": "Tính toán hàm 3PL và cập nhật tham số năng lực theta của học viên. Hệ thống tự động đánh giá cấp độ, điểm số và năng lực của người học dựa trên giá trị theta thay vì để mô hình tự phán đoán.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "theta": {"type": "number", "description": "Năng lực theta hiện tại của học viên"},
+                "is_correct": {"type": "boolean", "description": "Kết quả phân tích câu trả lời học viên là đúng (True) hay sai/ngộ nhận (False)"},
+                "a": {"type": "number", "description": "Độ phân biệt của câu hỏi a"},
+                "b": {"type": "number", "description": "Độ khó của câu hỏi b"},
+                "c": {"type": "number", "description": "Tham số đoán mò ngẫu nhiên c"}
+            },
+            "required": ["theta", "is_correct", "a", "b", "c"]
+        }
+    }
+}
+
 
 class AnalyticsService:
     def __init__(self):

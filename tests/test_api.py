@@ -138,6 +138,48 @@ def test_auth():
 
     print("[PASS] 9. Role-based authentication & registration ok")
 
+def test_theta_logging_options():
+    # 1. Gọi lấy câu hỏi
+    q_res = client.get("/api/slide-question?deck=d1&page=6&level=1&student_id=S0102&theta=0.0")
+    assert q_res.status_code == 200
+    q_data = q_res.json()
+    assert len(q_data["options"]) == 4
+
+    # 2. Học viên chọn phương án A (đúng)
+    opt_a = q_data["options"][0]
+    res_a = client.post("/api/chat/evaluate", json={
+        "student_id": "S0102",
+        "deck": "d1",
+        "page": 6,
+        "question_text": q_data["ai_question"],
+        "selected_option_id": opt_a["id"],
+        "answer_text": opt_a["text"],
+        "is_option_correct": opt_a["is_correct"],
+        "current_level": 1,
+        "current_streak": 0,
+        "theta": 0.0
+    })
+    assert res_a.status_code == 200
+    data_a = res_a.json()
+    assert data_a["is_correct"] is True
+    assert data_a["new_theta"] > 0.0
+
+    # 3. Kiểm tra API lấy log
+    log_res = client.get("/api/ai-log/thea?limit=10")
+    assert log_res.status_code == 200
+    logs = log_res.json()["logs"]
+    assert len(logs) >= 2
+    # Bản ghi cuối cùng phải là answer_evaluated với selected_option_id = "A"
+    last_log = logs[-1]
+    assert last_log["event"] == "answer_evaluated"
+    assert last_log["selected_option_id"] == "A"
+    assert last_log["is_correct"] is True
+    assert "theta_before" in last_log
+    assert "theta_after" in last_log
+    assert last_log["theta_after"] > last_log["theta_before"]
+
+    print("[PASS] 10. Theta logging for user-selected options to logbythea.jsonl ok")
+
 if __name__ == "__main__":
     test_health()
     test_slide_question()
@@ -147,5 +189,6 @@ if __name__ == "__main__":
     test_static_files()
     test_slide_image()
     test_auth()
-    print("\nSUCCESS: All 9 verification tests passed perfectly!")
+    test_theta_logging_options()
+    print("\nSUCCESS: All 10 verification tests passed perfectly!")
 

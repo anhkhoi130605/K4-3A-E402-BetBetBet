@@ -14,6 +14,7 @@ document.addEventListener('DOMContentLoaded', () => {
     currentPage: 1,
     currentLevel: 1,
     currentStreak: 0,
+    currentTheta: 0.0,
     activeCheckpointPage: null,
     currentQuestionData: null,
     studentId: 'S0102'
@@ -459,7 +460,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     try {
-      const res = await fetch(`${API_BASE}/api/slide-question?deck=${deck}&page=${page}&level=${state.currentLevel}`);
+      const res = await fetch(`${API_BASE}/api/slide-question?deck=${deck}&page=${page}&level=${state.currentLevel}&student_id=${state.studentId}&theta=${state.currentTheta ?? 0.0}`);
       if (res.ok) {
         const q = await res.json();
         const curTyping = document.getElementById('ai-typing-indicator');
@@ -583,7 +584,8 @@ document.addEventListener('DOMContentLoaded', () => {
           current_streak: state.currentStreak,
           question_text: currentQText,
           selected_option_id: optionId,
-          is_option_correct: defaultCorrect
+          is_option_correct: defaultCorrect,
+          theta: state.currentTheta ?? 0.0
         })
       });
 
@@ -623,6 +625,9 @@ document.addEventListener('DOMContentLoaded', () => {
       state.currentStreak = res.new_streak;
     } else {
       state.currentStreak = res.is_correct ? state.currentStreak + 1 : 0;
+    }
+    if (typeof res.new_theta === 'number') {
+      state.currentTheta = res.new_theta;
     }
     updateAdaptiveBadges();
 

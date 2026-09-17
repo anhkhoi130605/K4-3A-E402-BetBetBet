@@ -14,6 +14,8 @@ TRANSCRIPT_DIR = DATA_DIR / "transcript"
 CHATLOG_DIR = DATA_DIR / "chatlog"
 SURVEY_FILE = BASE_DIR / "Untitled form.csv"
 MOCKUP_DIR = BASE_DIR / "mockup"
+AI_LOG_DIR = BASE_DIR / "backend" / "ai-log"
+LOG_BY_THETA_FILE = AI_LOG_DIR / "logbythea.jsonl"
 
 # LLM Configuration (OpenAI & Gemini)
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")

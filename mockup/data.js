@@ -129,10 +129,12 @@ window.VLEARN_DATA = {
         summary: "Mô hình ngôn ngữ lớn huấn luyện trên dữ liệu khổng lồ, dự đoán token tiếp theo theo xác suất.",
         citations: ["T06-022", "T04-047"],
         recallConnection: null, // Slide mở đầu
-        aiQuestion: "Chào bạn! Bắt đầu từ Slide 6: Bản chất của LLM là dự đoán xác suất token tiếp theo, chứ không phải hiểu ngôn ngữ như con người. Bạn hãy ghi nhớ nguyên lý này để lát nữa đối chiếu với các slide sau nhé!",
+        aiQuestion: "Bắt đầu từ Slide 6: Bản chất của LLM là dự đoán xác suất token tiếp theo, chứ không phải hiểu ngôn ngữ như con người. Bạn hãy ghi nhớ nguyên lý này để lát nữa đối chiếu với các slide sau nhé!",
         options: [
-          { text: "Mô hình ghi nhớ toàn bộ từ vựng dưới dạng chữ viết tĩnh.", isCorrect: false },
-          { text: "Mô hình tính toán xác suất thống kê để sinh ra từng token kế tiếp.", isCorrect: true, feedback: "Chính xác! Ghi nhớ điều này để chuẩn bị bước sang Slide 12 về đơn vị tính Token." }
+          { text: "Mô hình tính toán xác suất thống kê để sinh ra từng token kế tiếp trong không gian vector.", isCorrect: true, feedback: "Chính xác! Ghi nhớ điều này để chuẩn bị bước sang Slide 12 về đơn vị tính Token." },
+          { text: "Mô hình ghi nhớ toàn bộ từ vựng dưới dạng chữ viết tĩnh và tra cứu như từ điển.", isCorrect: false, feedback: "Chưa chính xác: LLM không phải là cuốn từ điển tra từ vựng tĩnh mà tính toán phân phối xác suất sinh token." },
+          { text: "Mô hình suy luận logic tư duy có ý thức độc lập giống hệt như bộ não con người.", isCorrect: false, feedback: "Sai lầm: LLM là mô hình toán học dự đoán chuỗi token tiếp theo dựa trên trọng số xác suất." },
+          { text: "Mô hình dịch toàn bộ câu hỏi sang mã nhị phân 0-1 rồi tự động tìm kiếm câu trả lời trên Google.", isCorrect: false, feedback: "Sai lầm: LLM hoạt động độc lập bằng mạng nơ-ron sinh token, không tự động tìm Google." }
         ]
       },
       {
@@ -148,7 +150,9 @@ window.VLEARN_DATA = {
         aiQuestion: "🔗 GỢI NHỚ TỪ SLIDE 6: Ở Slide 6, mô hình dự đoán xác suất token tiếp theo. Vậy sang Slide 12 này, tại sao mô hình không dự đoán trực tiếp 'từ ngữ nguyên vẹn' của con người mà phải chẻ nhỏ thành Token?",
         options: [
           { text: "Vì máy tính chỉ tính toán được trên không gian số học toán học (vector embedding), và các ngôn ngữ như tiếng Việt cần chẻ thành sub-tokens.", isCorrect: true, feedback: "Xuất sắc! Bạn đã kết nối đúng từ việc dự đoán xác suất (Slide 6) sang cơ chế mã hóa toán học của Token (Slide 12)." },
-          { text: "Vì tiếng Việt viết từ phải sang trái nên cần đổi sang token.", isCorrect: false }
+          { text: "Vì tiếng Việt viết từ phải sang trái nên cần đổi sang token.", isCorrect: false, feedback: "Chưa đúng: Tiếng Việt viết từ trái sang phải, việc chẻ token là do cấu trúc dấu thanh và âm tiết ghép." },
+          { text: "Vì mỗi từ tiếng Việt luôn tương ứng đúng 1 token duy nhất giống hệt tiếng Anh nên không cần chẻ nhỏ.", isCorrect: false, feedback: "Ngộ nhận kinh điển: Tiếng Việt có dấu thanh khiến bộ tokenizer BPE tách thành 1.3 - 1.4 sub-token/từ!" },
+          { text: "Vì máy chủ AI chỉ lưu trữ bảng mã ASCII tiếng Anh, không thể đọc được ký tự Unicode tiếng Việt.", isCorrect: false, feedback: "Sai lầm: Các bộ tokenizer hiện đại như BPE xử lý UTF-8 đa ngôn ngữ thông qua sub-token." }
         ]
       },
       {
@@ -164,7 +168,9 @@ window.VLEARN_DATA = {
         aiQuestion: "🔗 KẾT NỐI VỚI SLIDE 12: Một tài liệu tiếng Việt dài 80.000 từ. Nếu bạn đưa vào mô hình có Context Window là 100.000 token, liệu có bị tràn context không?",
         options: [
           { text: "Có nguy cơ tràn! Vì theo Slide 12, 80.000 từ tiếng Việt nhân hệ số ~1.35x sẽ tương đương ~108.000 token, vượt ngưỡng 100.000 token của Slide 14.", isCorrect: true, feedback: "Chính xác tuyệt đối! Đây là lỗi cực kỳ phổ biến mà 34.8% học viên hay mắc phải khi không kết nối 2 slide này." },
-          { text: "Không tràn, vì 80.000 từ nhỏ hơn 100.000 token.", isCorrect: false }
+          { text: "Không tràn, vì 80.000 từ nhỏ hơn 100.000 token.", isCorrect: false, feedback: "Sai lầm: 1 từ tiếng Việt không bằng 1 token! Cần nhân hệ số quy đổi ~1.35x." },
+          { text: "Không tràn, vì mô hình sẽ tự động nén văn bản tiếng Việt lại còn 50.000 token.", isCorrect: false, feedback: "Chưa chính xác: LLM không tự nén token đầu vào nếu không có thuật toán nén chuyên dụng." },
+          { text: "Có tràn, nhưng chỉ do kích thước file tính bằng Megabyte (MB) quá lớn chứ không liên quan đến token.", isCorrect: false, feedback: "Sai lầm: Giới hạn Context Window được đo bằng Token, không đo bằng dung lượng MB." }
         ]
       },
       {
@@ -180,7 +186,9 @@ window.VLEARN_DATA = {
         aiQuestion: "🔗 GỢI NHỚ TỪ SLIDE 6 & 14: Trước Transformer, các mô hình cũ đọc từng từ từ trái sang phải và hay bị 'quên' phần đầu khi context dài (Slide 14). Slide 18 giải quyết điểm nghẽn này bằng cơ chế nào?",
         options: [
           { text: "Cơ chế Self-Attention cho phép TẤT CẢ token nhìn nhau SONG SONG cùng lúc trong không gian toán học, không duyệt tuần tự.", isCorrect: true, feedback: "Rất chuẩn! Bạn đã hiểu được bước đột phá của Self-Attention so với cơ chế tuần tự cũ." },
-          { text: "Mô hình tăng thêm ổ cứng SSD để đọc nhanh hơn.", isCorrect: false }
+          { text: "Mô hình tăng thêm ổ cứng SSD để đọc nhanh hơn.", isCorrect: false, feedback: "Chưa đúng: Bản chất là thay đổi kiến trúc thuật toán sang song song (Self-Attention), không phải chỉ tăng RAM." },
+          { text: "Mô hình đảo ngược chiều đọc từ phải sang trái để đọc lại phần ngữ cảnh bị quên.", isCorrect: false, feedback: "Sai lầm: Transformer không duyệt tuần tự xuôi hay ngược mà tính toán ma trận song song toàn bộ." },
+          { text: "Mô hình loại bỏ hoàn toàn các từ đứng ở đầu câu và chỉ giữ lại 50 từ cuối cùng.", isCorrect: false, feedback: "Chưa chính xác: Transformer tính toán trọng số tương đồng cho toàn bộ cửa sổ ngữ cảnh." }
         ]
       },
       {
@@ -196,7 +204,9 @@ window.VLEARN_DATA = {
         aiQuestion: "🔗 KẾT NỐI VỚI SLIDE 18: Ở Slide 18 bạn biết các token 'nhìn nhau'. Nhưng trong toán học, máy tính làm sao biết từ 'nó' trong câu 'Con mèo bắt chuột vì nó đói' đang chú ý vào 'mèo' hay 'chuột'?",
         options: [
           { text: "Query (nó) nhân với Key (mèo) qua hàm Softmax tạo ra Similarity Score cao nhất, gán Value tương ứng.", isCorrect: true, feedback: "Tuyệt đỉnh! Bạn đã bắc cầu hoàn hảo từ khái niệm trực quan ở Slide 18 sang bản chất toán học Q-K-V ở Slide 20." },
-          { text: "Mô hình tự đoán ngẫu nhiên xem từ nào gần hơn.", isCorrect: false }
+          { text: "Mô hình tự đoán ngẫu nhiên xem từ nào gần hơn.", isCorrect: false, feedback: "Chưa đúng: Thuật toán tính ma trận tương đồng toán học có trọng số, không hề ngẫu nhiên." },
+          { text: "Mô hình tra từ điển ngữ pháp tiếng Việt để tìm chủ ngữ gần nhất.", isCorrect: false, feedback: "Sai lầm: Transformer không phân tích bằng luật ngữ pháp tĩnh mà tính toán không gian vector của Q và K." },
+          { text: "Mô hình mặc định gán từ 'nó' cho danh từ đứng ngay liền kề trước đó là 'chuột'.", isCorrect: false, feedback: "Chưa chính xác: Dựa trên ngữ cảnh 'đói', liên kết ngữ nghĩa Q và K cho trọng số cao với 'mèo' hơn." }
         ]
       },
       {
@@ -212,7 +222,9 @@ window.VLEARN_DATA = {
         aiQuestion: "🔗 GỢI NHỚ TỪ SLIDE 6 & 20: Khi Softmax (Slide 20) tính ra điểm số các token kế tiếp (Slide 6), nếu bạn cần trích xuất thông tin hợp đồng tài chính chính xác tuyệt đối, bạn nên đặt Temperature bằng mấy và vì sao?",
         options: [
           { text: "Đặt Temperature = 0 để mô hình luôn luôn chọn token có xác suất cao nhất, đảm bảo tính tất định (deterministic).", isCorrect: true, feedback: "Chính xác! Giảng viên đã nhấn mạnh điều này ở Slide 22 cho các bài toán tài chính/y tế." },
-          { text: "Đặt Temperature = 1 để mô hình tự sáng tạo thêm điều khoản mới.", isCorrect: false }
+          { text: "Đặt Temperature = 1 để mô hình tự sáng tạo thêm điều khoản mới.", isCorrect: false, feedback: "Sai lầm: Trong tài chính, temperature = 1 sẽ gây rủi ro hallucination rất lớn." },
+          { text: "Đặt Temperature = 2 để mô hình suy luận đa chiều và phát hiện gian lận tốt hơn.", isCorrect: false, feedback: "Sai lầm: Temperature quá cao sẽ làm phẳng phân phối xác suất, khiến kết quả lộn xộn, vô nghĩa." },
+          { text: "Đặt Temperature bất kỳ vì tham số này chỉ ảnh hưởng đến tốc độ phản hồi chứ không ảnh hưởng nội dung.", isCorrect: false, feedback: "Chưa chính xác: Temperature điều khiển trực tiếp phân phối xác suất Softmax chọn token tiếp theo." }
         ]
       },
       {
@@ -228,7 +240,9 @@ window.VLEARN_DATA = {
         aiQuestion: "🔗 TỔNG HỢP KIẾN THỨC TOÀN BỘ (SLIDE 12 ➔ 18 ➔ 25): Khi tính tổng chi phí API cho một phiên chat CSKH tiếng Việt, điều gì xảy ra nếu bạn chỉ tính tiền số từ khách hàng gõ?",
         options: [
           { text: "Sẽ bị hụt ngân sách nặng nề! Vì phải tính thêm hệ số 1.35x tiếng Việt (Slide 12), token của System Prompt (Slide 22), và Output token được feed-forward (Slide 18, 25).", isCorrect: true, feedback: "Chúc mừng bạn! Bạn đã hoàn thành trọn vẹn chuỗi bắc cầu lý thuyết xuyên suốt từ Slide 6 đến Slide 25!" },
-          { text: "Không sao, nhà cung cấp chỉ tính tiền từ ngữ tiếng Anh.", isCorrect: false }
+          { text: "Không sao, nhà cung cấp API sẽ tự động miễn phí phần System Prompt.", isCorrect: false, feedback: "Sai lầm: Nhà cung cấp tính phí input token cho TOÀN BỘ request, bao gồm cả System Prompt." },
+          { text: "Chi phí sẽ giảm một nửa vì nhà cung cấp chỉ tính phí các token đầu ra (output token).", isCorrect: false, feedback: "Sai lầm: API tính phí cho CẢ input token và output token, trong đó input token gửi kèm lịch sử chat lặp lại liên tục." },
+          { text: "Ngân sách vẫn đúng vì 1 từ tiếng Việt luôn được tính đúng bằng 1 token khi quy đổi tài chính.", isCorrect: false, feedback: "Sai lầm kinh điển: Tiếng Việt có dấu thanh tốn ~1.35x token/từ, không nhân hệ số sẽ làm sai lệch dự toán ngân sách." }
         ]
       }
     ]
