@@ -259,13 +259,17 @@ Kết quả đánh giá:
 """
 
 def build_evaluation_prompt(
-    deck: str,
-    page: int,
-    slide_text: str,
-    question_text: str,
-    student_answer: str,
-    current_level: int = 1,
-    current_streak: int = 0
+        deck: str,
+        page: int,
+        slide_text: str,
+        question_text: str,
+        student_answer: str,
+        current_level: int = 1,
+        current_streak: int = 0,
+        theta: float = 0.0,
+        item_a: float = 1.0,
+        item_b: float = 0.0,
+        item_c: float = 0.2
 ) -> str:
     """Xây dựng prompt đánh giá câu trả lời tích hợp ReAct và Few-Shot"""
     return f"""
@@ -277,10 +281,12 @@ def build_evaluation_prompt(
 - Câu hỏi đặt ra: {question_text}
 - Câu trả lời của học viên: \"\"\"{student_answer}\"\"\"
 - Trạng thái học viên: Cấp độ hiện tại = Level {current_level}, Chuỗi đúng Streak = {current_streak}
-
+- Mô hình 3PL: theta = {theta}, a = {item_a}, b = {item_b}, c = {item_c}
+ 
 [YÊU CẦU ĐÁNH GIÁ THEO CHUỖI REACT]:
 Hãy phân tích chuỗi tư duy (thought) ➔ hành động (action) ➔ quan sát (observation) ➔ phán quyết sư phạm.
 Nếu học viên đúng và streak >= 1, hãy tăng level (tối đa Level 3). Nếu học viên ngộ nhận, hãy reset streak = 0 và scaffold.
+Cân nhắc cả năng lực ước tính theta và tham số câu hỏi a/b/c khi đánh giá độ khó và xác suất đoán mò.
 
 Trả về JSON DUY NHẤT:
 {{

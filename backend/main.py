@@ -6,7 +6,7 @@ Implements the 4 core sequences from docs/sequence_diagram.jpg:
 3. Điều phối độ khó thích ứng (Adaptive Difficulty & Streak tracking)
 4. Dashboard & Can thiệp giảng viên (Instructor Heatmap & Manual Override)
 """
-
+import math
 import os
 from pathlib import Path
 from typing import Dict, List, Any, Optional
@@ -31,7 +31,7 @@ from backend.services.rag_service import rag_service
 from backend.services.pedagogy_service import pedagogy_service
 from backend.services.analytics_service import analytics_service
 from backend.services.auth_service import auth_service
-from backend.services.openrouter_service import openrouter_service
+from backend.services.openAI_service import openrouter_service
 
 app = FastAPI(
     title="VLearn Adaptive Learning API",
@@ -139,6 +139,41 @@ async def get_slide_question(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Lỗi truy xuất câu hỏi slide: {str(e)}")
 
+
+QUESTION_PARAMS = {
+    "d1:6": {"a": 1.1, "b": -0.2, "c": 0.18},
+    "d1:12": {"a": 1.2, "b": 0.1, "c": 0.2},
+    "d1:18": {"a": 1.4, "b": 0.3, "c": 0.15},
+    "d1:22": {"a": 1.0, "b": 0.0, "c": 0.25},
+    "d1:25": {"a": 1.3, "b": 0.4, "c": 0.18},
+    "d2:5": {"a": 1.0, "b": -0.1, "c": 0.2},
+    "d2:11": {"a": 1.2, "b": 0.2, "c": 0.15},
+    "d2:20": {"a": 1.3, "b": 0.4, "c": 0.18},
+}
+
+
+def sigmoid(x: float) -> float:
+    return 1.0 / (1.0 + math.exp(-x))
+
+
+def p3pl(theta: float, a: float, b: float, c: float) -> float:
+    z = a * (theta - b)
+    g = sigmoid(z)
+    return c + (1 - c) * g
+
+
+def update_theta(theta: float, is_correct: bool, a: float, b: float, c: float, lr: float = 0.25) -> float:
+    a = max(float(a), 0.1)
+    c = min(max(float(c), 0.0), 0.8)
+    p = p3pl(theta, a, b, c)
+    y = 1.0 if is_correct else 0.0
+
+    g = sigmoid(a * (theta - b))
+    dP = (1 - c) * a * g * (1 - g)
+    new_theta = theta + lr * (y - p) * dP
+    return float(new_theta)
+
+
 @app.post("/api/chat/evaluate", response_model=AnswerEvaluationResponse)
 async def evaluate_answer(req: StudentAnswerRequest):
     """
@@ -146,12 +181,29 @@ async def evaluate_answer(req: StudentAnswerRequest):
     """
     try:
         result = await pedagogy_service.evaluate_answer(req)
-        
+
         # Cập nhật trạng thái học viên vào bộ nhớ
         student = analytics_service.students.get(req.student_id)
         if student:
+            theta = float(req.theta) if req.theta is not None else float(student.get("theta", 0.0))
+            q_key = f"{req.deck}:{req.page}"
+            params = QUESTION_PARAMS.get(q_key, {"a": 1.0, "b": 0.0, "c": 0.2})
+            item_a = float(req.item_a) if req.item_a is not None else float(params["a"])
+            item_b = float(req.item_b) if req.item_b is not None else float(params["b"])
+            item_c = float(req.item_c) if req.item_c is not None else float(params["c"])
+
+            new_theta = update_theta(theta, result.is_correct, item_a, item_b, item_c, lr=0.25)
+            student["theta"] = new_theta
             student["level"] = result.new_level
             student["streak"] = result.new_streak
+
+            if new_theta < -1.0:
+                student["level"] = 1
+            elif new_theta < 1.0:
+                student["level"] = 2
+            else:
+                student["level"] = 3
+
             if result.diagnostic and result.diagnostic.is_misconception:
                 student["last_error"] = result.diagnostic.faulty_assumption
                 student["flagged"] = True
@@ -159,11 +211,10 @@ async def evaluate_answer(req: StudentAnswerRequest):
             elif result.is_correct:
                 student["status"] = "Tiến bộ tốt"
                 student["flagged"] = False
-                
+
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Lỗi đánh giá câu trả lời: {str(e)}")
-
 
 @app.post("/api/chat/ask", response_model=StudentChatResponse)
 async def ask_tutor(req: StudentChatRequest):

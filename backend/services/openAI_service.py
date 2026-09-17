@@ -8,7 +8,7 @@ import json
 import os
 from typing import Optional, Dict, Any
 import httpx
-from backend.config import OPENROUTER_API_KEY, OPENROUTER_MODEL, ENV_FILE
+from backend.config import OPENAI_API_KEY, OPENAI_MODEL, ENV_FILE
 from backend.prompts import (
     check_guardrails_input,
     SOCRATIC_GENERATOR_SYSTEM_PROMPT,
@@ -19,8 +19,8 @@ from backend.prompts import (
 
 class OpenRouterService:
     def __init__(self):
-        self.api_key = OPENROUTER_API_KEY or os.getenv("OPENROUTER_API_KEY", "")
-        self.model = OPENROUTER_MODEL or "openai/gpt-4o-mini"
+        self.api_key = OPENAI_API_KEY or os.getenv("OPENAI_API_KEY", "")
+        self.model = OPENAI_MODEL or "openai/gpt-4o-mini"
         self.endpoint = "https://openrouter.ai/api/v1/chat/completions"
 
     def set_key(self, key: str):
@@ -125,7 +125,11 @@ class OpenRouterService:
         question_text: str,
         student_answer: str,
         current_level: int = 1,
-        current_streak: int = 0
+        current_streak: int = 0,
+        theta: float = 0.0,
+        item_a: float = 1.0,
+        item_b: float = 0.0,
+        item_c: float = 0.2
     ) -> Optional[Dict[str, Any]]:
         """
         Đánh giá câu trả lời của học viên bằng ReAct Pattern và Few-Shot Prompting.
@@ -147,7 +151,11 @@ class OpenRouterService:
             question_text=question_text,
             student_answer=student_answer,
             current_level=current_level,
-            current_streak=current_streak
+            current_streak=current_streak,
+            theta=theta,
+            item_a=item_a,
+            item_b=item_b,
+            item_c=item_c
         )
 
         headers = {

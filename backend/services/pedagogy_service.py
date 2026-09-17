@@ -14,7 +14,7 @@ from backend.models.schemas import (
     StudentChatResponse
 )
 from backend.services.rag_service import rag_service
-from backend.services.openrouter_service import openrouter_service
+from backend.services.openAI_service import openrouter_service
 from backend.config import STREAK_FOR_LEVEL_UP, MAX_ADAPTIVE_LEVEL
 
 # Danh sách các Slide Mốc kiến thức quan trọng cần kích hoạt câu hỏi (Spaced Retrieval Checkpoints)
@@ -175,6 +175,8 @@ class PedagogyService:
         }
         active_level_label = level_label_map.get(level, "Level 1 (Cơ bản)")
 
+        variants = []
+
         # 1. Ưu tiên gọi GPT-4o-mini qua OpenRouter
         if openrouter_service.is_available():
             llm_res = await openrouter_service.generate_slide_question(
@@ -196,7 +198,7 @@ class PedagogyService:
                 ]
                 preset_flow = PRESET_FLOWS.get(deck, {}).get(page, {})
                 preset_prior = preset_flow.get("prior_page")
-                return SlideQuestionResponse(
+                primary = SlideQuestionResponse(
                     deck=deck,
                     page=page,
                     level=level,
@@ -211,8 +213,18 @@ class PedagogyService:
                     ai_question=llm_res["ai_question"],
                     options=options,
                     citations=llm_res.get("citations") or preset_flow.get("citations", ["T04-049"]),
-                    next_checkpoint=next_checkpoint
+                    next_checkpoint=next_checkpoint,
+                    questions=[]
                 )
+                variants = [
+                    QuestionVariant(
+                        id="v1",
+                        question=primary.ai_question,
+                        options=primary.options,
+                        citations=primary.citations
+                    )
+                ]
+                return primary
 
         # 2. Fallback sang kho câu hỏi mẫu chuẩn hóa
         deck_flow = PRESET_FLOWS.get(deck, PRESET_FLOWS["d1"])
@@ -231,7 +243,7 @@ class PedagogyService:
             for opt in flow["options"]
         ]
 
-        return SlideQuestionResponse(
+        primary = SlideQuestionResponse(
             deck=deck,
             page=page,
             level=level,
@@ -246,8 +258,39 @@ class PedagogyService:
             ai_question=flow["ai_question"],
             options=options,
             citations=flow["citations"],
-            next_checkpoint=next_checkpoint
+            next_checkpoint=next_checkpoint,
+            questions=[
+                QuestionVariant(
+                    id="v1",
+                    question=flow["ai_question"],
+                    options=options,
+                    citations=flow["citations"]
+                )
+            ]
         )
+
+        # 3. Sinh 4 biến thể câu hỏi dựa trên cùng slide để UI có thể render nhiều dạng câu hỏi
+        for idx in range(1, 5):
+            if idx == 1:
+                continue
+            q_text = f"{flow['ai_question']} (Biến thể {idx})"
+            q_options = [
+                QuestionOption(
+                    id=opt["id"],
+                    text=opt["text"],
+                    is_correct=opt["is_correct"],
+                    feedback=opt["feedback"]
+                )
+                for opt in flow["options"]
+            ]
+            primary.questions.append(QuestionVariant(
+                id=f"v{idx}",
+                question=q_text,
+                options=q_options,
+                citations=flow["citations"]
+            ))
+
+        return primary
 
     async def evaluate_answer(self, req: StudentAnswerRequest) -> AnswerEvaluationResponse:
         """Đánh giá câu trả lời học viên bằng GPT-4o-mini hoặc Misconception Bank kèm chấm điểm và hướng dẫn ôn tập"""
@@ -333,7 +376,11 @@ class PedagogyService:
                 question_text=q_text,
                 student_answer=req.answer_text,
                 current_level=req.current_level,
-                current_streak=req.current_streak
+                current_streak=req.current_streak,
+                theta=float(req.theta) if req.theta is not None else 0.0,
+                item_a=float(req.item_a) if req.item_a is not None else 1.0,
+                item_b=float(req.item_b) if req.item_b is not None else 0.0,
+                item_c=float(req.item_c) if req.item_c is not None else 0.2
             )
             if llm_eval:
                 # Xử lý khi kích hoạt Guardrail an toàn sư phạm / chống injection

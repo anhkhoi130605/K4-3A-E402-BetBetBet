@@ -31,9 +31,11 @@ class StudentAnswerRequest(BaseModel):
     answer_text: str = Field(..., example="Tôi nghĩ 120 từ tiếng Việt bằng 120 token giống tiếng Anh.")
     current_level: int = Field(1, example=1)
     current_streak: int = Field(0, example=0)
-    question_text: Optional[str] = None
-    selected_option_id: Optional[str] = None
-    is_option_correct: Optional[bool] = None
+
+    theta: Optional[float] = Field(0.0, example=0.0)
+    item_a: Optional[float] = Field(1.0, example=1.0)
+    item_b: Optional[float] = Field(0.0, example=0.0)
+    item_c: Optional[float] = Field(0.2, example=0.2)
 
 # Request: Giảng viên ghi đè kịch bản / can thiệp (Tính năng 4)
 class InstructorOverrideRequest(BaseModel):
@@ -75,6 +77,12 @@ class QuestionOption(BaseModel):
     is_correct: bool
     feedback: str
 
+class QuestionVariant(BaseModel):
+    id: str
+    question: str
+    options: List[QuestionOption]
+    citations: List[str] = []
+
 class SlideQuestionResponse(BaseModel):
     deck: str
     page: int
@@ -90,6 +98,7 @@ class SlideQuestionResponse(BaseModel):
     ai_question: str
     options: List[QuestionOption]
     citations: List[str]
+    questions: List[QuestionVariant] = []
     next_checkpoint: Optional[int] = None
 
 # Response: Dashboard Giảng viên (Tính năng 4 trong Sơ đồ)

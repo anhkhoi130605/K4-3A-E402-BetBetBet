@@ -15,9 +15,9 @@ CHATLOG_DIR = DATA_DIR / "chatlog"
 SURVEY_FILE = BASE_DIR / "Untitled form.csv"
 MOCKUP_DIR = BASE_DIR / "mockup"
 
-# LLM Configuration (OpenRouter & Gemini)
-OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
-OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "openai/gpt-4o-mini")
+# LLM Configuration (OpenAI & Gemini)
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "openai/gpt-4o-mini")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 MODEL_NAME = os.getenv("MODEL_NAME", "gemini-1.5-flash")
 
@@ -29,12 +29,12 @@ if ENV_FILE.exists():
             if "=" in line and not line.strip().startswith("#"):
                 k, v = line.strip().split("=", 1)
                 os.environ[k.strip()] = v.strip().strip("'\"")
-        if not OPENROUTER_API_KEY and "OPENROUTER_API_KEY" in os.environ:
-            OPENROUTER_API_KEY = os.environ["OPENROUTER_API_KEY"]
+        if not OPENAI_API_KEY and "OPENAI_API_KEY" in os.environ:
+            OPENAI_API_KEY = os.environ["OPENAI_API_KEY"]
     except Exception as e:
         print(f"[Config] Warning loading .env: {e}")
 
-# Socratic Pedagogy Rules
+# Socratic Pedagogy Rules (Adaptive Learning Level)
 STREAK_FOR_LEVEL_UP = 2
 MAX_ADAPTIVE_LEVEL = 3
 DEFAULT_HINT_LEVEL = 1
