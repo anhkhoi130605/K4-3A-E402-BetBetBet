@@ -40,6 +40,7 @@ from backend.services.auth_service import auth_service
 from backend.services.openAI_service import openrouter_service
 from backend.services.logger_service import theta_logger
 from backend.services.memory_service import memory_service
+from backend.services.misconception_log_service import misconception_logger
 
 app = FastAPI(
     title="VLearn Adaptive Learning API",

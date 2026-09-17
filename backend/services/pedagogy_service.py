@@ -122,7 +122,7 @@ def generate_milestones(total_slides: Optional[int] = None, min_slides: int = 5,
 # Checkpoint mốc ngẫu nhiên sinh động cho từng bộ slide, tính động theo số trang thực tế của PDF
 KEY_MILESTONES = {
     "d1": sorted(list(set(CORE_MILESTONES["d1"] + generate_milestones(total_slides=29, min_slides=3, max_slides=6)))),
-    "d2": sorted(list(set(CORE_MILESTONES["d2"] + generate_milestones(total_slides=29, min_slides=3, max_slides=6))))
+    "d2": sorted(list(set(CORE_MILESTONES["d2"] + generate_milestones(total_slides=29, min_slides=3, max_slides=6)))),
     "d1": generate_milestones(deck="d1"),
     "d2": generate_milestones(deck="d2")
 }
@@ -1021,15 +1021,14 @@ class PedagogyService:
 
         # 3. Ưu tiên gọi GPT-4o-mini qua OpenRouter/OpenAI kết hợp bối cảnh RAG và Bộ nhớ ngữ cảnh STM / LTM
         if openrouter_service.is_available():
+            combined_transcript = transcript_context + (misc_context if 'misc_context' in locals() else '')
             llm_reply = await openrouter_service.chat_socratic(
                 deck=req.deck,
                 page=req.page,
                 slide_text=slide_text,
                 question_text=q_text,
                 user_message=req.message,
-                transcript_context=transcript_context + misc_context,
-                level=req.current_level
-                transcript_context=transcript_context,
+                transcript_context=combined_transcript,
                 level=req.current_level,
                 conversation_history=conv_history,
                 memory_context=memory_context
