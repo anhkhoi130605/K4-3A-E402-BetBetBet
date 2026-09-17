@@ -10,7 +10,13 @@ import sys
 from typing import Optional, Dict, Any
 import httpx
 import random
-from backend.config import OPENAI_API_KEY, OPENAI_MODEL, ENV_FILE
+from backend.config import (
+    OPENAI_API_KEY,
+    OPENAI_MODEL,
+    OPENROUTER_API_KEY,
+    OPENROUTER_MODEL,
+    ENV_FILE
+)
 from backend.prompts import (
     check_guardrails_input,
     SOCRATIC_GENERATOR_SYSTEM_PROMPT,
@@ -21,8 +27,10 @@ from backend.prompts import (
 
 class OpenRouterService:
     def __init__(self):
-        self.api_key = OPENAI_API_KEY or os.getenv("OPENAI_API_KEY", "")
-        self.model = OPENAI_MODEL or "openai/gpt-4o-mini"
+        self.api_key = OPENROUTER_API_KEY or os.getenv("OPENROUTER_API_KEY") or OPENAI_API_KEY or os.getenv("OPENAI_API_KEY", "")
+        self.model = OPENROUTER_MODEL or os.getenv("OPENROUTER_MODEL") or OPENAI_MODEL or "openai/gpt-4o-mini"
+        if not self.model or "gpt-5" in self.model or "union" in self.model:
+            self.model = "openai/gpt-4o-mini"
         self.endpoint = "https://openrouter.ai/api/v1/chat/completions"
 
     def set_key(self, key: str):
@@ -46,7 +54,7 @@ class OpenRouterService:
             print(f"[OpenRouterService] Error writing to .env: {e}")
 
     def get_api_key(self) -> str:
-        if not self.api_key:
+        if not self.api_key or self.api_key.startswith("sk-5Y"):
             self.api_key = os.getenv("OPENROUTER_API_KEY", "")
             if not self.api_key and ENV_FILE.exists():
                 try:

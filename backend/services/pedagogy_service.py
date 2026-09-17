@@ -63,28 +63,28 @@ MISCONCEPTION_BANK = [
 PRESET_FLOWS = {
     "d1": {
         6: {
-            "title": "Trang 6: LLM là gì & Cơ chế hoạt động cốt lõi",
-            "summary": "Mô hình ngôn ngữ lớn dự đoán token tiếp theo theo phân phối xác suất.",
+            "title": "Trang 6: 1980 - Hệ chuyên gia (Expert System)",
+            "summary": "AI đổi chiến lược: thôi theo đuổi trí tuệ tổng quát (AGI) và tập trung giải thật tốt một miền hẹp bằng cách mã hóa tri thức chuyên gia thành luật.",
             "prior_page": None,
-            "bridge_concept": "Slide mở đầu nền tảng",
-            "bridge_note": "Bản chất LLM là sinh token theo xác suất, không phải hiểu ngữ nghĩa tĩnh như con người.",
+            "bridge_concept": "Lịch sử AI: Chuyển dịch từ trí tuệ tổng quát sang giải bài toán hẹp",
+            "bridge_note": "Giai đoạn 1980 đánh dấu sự ra đời của Hệ chuyên gia (Expert System), thay vì cố giải mọi bài toán thì tập trung mã hóa tri thức chuyên gia thành các tập luật IF-THEN trong một miền xác định.",
             "citations": ["T06-022", "T04-047"],
-            "ai_question": "Bản chất của LLM là gì khi người dùng nhập câu hỏi vào?",
+            "ai_question": "Theo Slide 6, bước chuyển chiến lược quan trọng của ngành AI vào năm 1980 dẫn đến sự ra đời của Hệ chuyên gia (Expert System) là gì?",
             "options": [
-                {"id": "A", "text": "Mô hình tính toán xác suất thống kê để dự đoán và sinh ra từng token kế tiếp trong không gian vector.", "is_correct": True, "feedback": "Chính xác! Ghi nhớ nguyên lý này để chuẩn bị bước sang Slide 12 về đơn vị tính Token."},
-                {"id": "B", "text": "Mô hình ghi nhớ toàn bộ từ vựng và tra cứu như một cuốn từ điển bách khoa tĩnh.", "is_correct": False, "feedback": "Chưa chính xác: LLM không phải là cuốn từ điển tra từ vựng tĩnh mà tính toán phân phối xác suất sinh token."},
-                {"id": "C", "text": "Mô hình suy luận logic tư duy có ý thức độc lập giống hệt như bộ não con người.", "is_correct": False, "feedback": "Sai lầm: LLM là mô hình toán học dự đoán chuỗi token tiếp theo dựa trên trọng số xác suất."},
-                {"id": "D", "text": "Mô hình dịch toàn bộ câu hỏi sang mã nhị phân 0-1 rồi tự động tìm kiếm câu trả lời trên Google.", "is_correct": False, "feedback": "Sai lầm: LLM hoạt động độc lập bằng mạng nơ-ron sinh token, không tự động tìm Google."}
+                {"id": "A", "text": "Thôi theo đuổi trí tuệ tổng quát và tập trung giải thật tốt một miền bài toán hẹp bằng cách mã hóa tri thức chuyên gia thành luật.", "is_correct": True, "feedback": "Chính xác! Slide 6 nêu rõ: AI đổi chiến lược sang mã hóa tri thức chuyên gia thành luật (rules) để giải quyết thật tốt một miền hẹp."},
+                {"id": "B", "text": "Từ bỏ hoàn toàn máy tính điện tử và chuyển sang nghiên cứu mô phỏng sinh học tế bào nơ-ron sống.", "is_correct": False, "feedback": "Chưa chính xác: AI thập niên 1980 áp dụng lập trình ký hiệu (symbolic AI) và tập luật trên máy tính, không từ bỏ máy tính điện tử."},
+                {"id": "C", "text": "Chuyển sang huấn luyện các mô hình ngôn ngữ lớn (LLM) hàng tỷ tham số tự động cào dữ liệu Internet.", "is_correct": False, "feedback": "Sai mốc lịch sử: LLM và Internet bùng nổ nhiều thập kỷ sau đó (2017+ Transformer, 2022 ChatGPT). Năm 1980 là kỷ nguyên của luật tay (handcrafted rules)."},
+                {"id": "D", "text": "Tập trung xây dựng hệ thống trí tuệ nhân tạo toàn năng (AGI) có thể tự động trả lời mọi câu hỏi thuộc mọi lĩnh vực cùng lúc.", "is_correct": False, "feedback": "Sai lầm: Ngược lại, chính vì theo đuổi trí tuệ tổng quát gặp bế tắc (mùa đông AI) nên năm 1980 ngành AI mới thu hẹp phạm vi về một miền bài toán cụ thể."}
             ]
         },
         12: {
-            "title": "Trang 12: Định nghĩa Token & Đặc thù Tiếng Việt",
-            "summary": "Đơn vị tính cơ bản của LLM là Token, không phải từ. Tiếng Việt có dấu thanh tốn 1.3 - 1.4 lần token.",
+            "title": "Trang 12: Đơn vị Token & Vòng lặp Đoán Tiếp (Autoregressive)",
+            "summary": "Sinh văn bản = đoán token → nối vào câu → đoán tiếp. Đơn vị cơ bản là Token, tiếng Việt có dấu thanh tốn hệ số ~1.35x sub-token.",
             "prior_page": 6,
-            "bridge_concept": "Dự đoán next-token (Slide 6) ➔ Đơn vị tính Token tiếng Việt (Slide 12)",
-            "bridge_note": "Ở Slide 6, mô hình dự đoán theo 'token'. Sang Slide 12, giảng viên giải thích vì sao tiếng Việt tốn nhiều token hơn tiếng Anh.",
+            "bridge_concept": "Hệ chuyên gia theo luật (Slide 6) ➔ LLM đoán Token theo xác suất (Slide 12)",
+            "bridge_note": "Ở Slide 6, Hệ chuyên gia xử lý theo tập luật IF-THEN cứng. Đến Slide 12, mô hình ngôn ngữ sinh văn bản bằng cách liên tục tính xác suất và đoán token tiếp theo (với tiếng Việt tốn ~1.35x sub-token).",
             "citations": ["T04-049"],
-            "ai_question": "🔗 GỢI NHỚ TỪ SLIDE 6: Tại sao mô hình không đoán trực tiếp 'từ ngữ nguyên vẹn' mà phải chẻ nhỏ thành Token?",
+            "ai_question": "🔗 GỢI NHỚ TỪ SLIDE 6: Khác với Hệ chuyên gia (Slide 6) dùng luật cứng, mô hình ở Slide 12 sinh văn bản theo vòng lặp đoán token nào và tại sao tiếng Việt phải nhân hệ số sub-token?",
             "options": [
                 {"id": "A", "text": "Vì mô hình xử lý trên không gian toán học (embedding vector), và tiếng Việt có dấu cần chẻ thành sub-tokens.", "is_correct": True, "feedback": "Xuất sắc! Bạn đã kết nối đúng từ nguyên lý dự đoán xác suất (Slide 6) sang cơ chế mã hóa toán học của Token (Slide 12)."},
                 {"id": "B", "text": "Vì tiếng Việt viết từ phải sang trái nên máy tính bắt buộc phải đổi sang token.", "is_correct": False, "feedback": "Chưa đúng: Tiếng Việt viết từ trái sang phải, việc chẻ token là do cấu trúc dấu thanh và âm tiết ghép."},
@@ -488,6 +488,18 @@ class PedagogyService:
                         transcript_excerpt=slide_text[:200] if slide_text else "Tài liệu slide",
                         socratic_guidance=hint
                     )
+                elif not is_correct:
+                    for m in MISCONCEPTION_BANK:
+                        if any(kw in req.answer_text.lower() for kw in m["keywords"]):
+                            diagnostic = MisconceptionDiagnostic(
+                                is_misconception=True,
+                                faulty_assumption=m["faulty_assumption"],
+                                citation_id=m.get("citation", "T04-049"),
+                                slide_reference=m.get("slide", f"Slide {req.page}"),
+                                transcript_excerpt=m.get("explanation", ""),
+                                socratic_guidance=m.get("sub_question", hint)
+                            )
+                            break
 
                 review_rec = llm_eval.get("review_recommendation") or (
                     "Lập luận rất sắc bén! Bạn đã hiểu đúng bản chất và sẵn sàng học tiếp." if is_correct else (

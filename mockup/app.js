@@ -887,6 +887,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // ================= 5. INSTRUCTOR DASHBOARD =================
   async function fetchInstructorData() {
+    fetchThetaLogs();
     try {
       const res = await fetch(`${API_BASE}/api/analytics/dashboard`);
       if (res.ok) {
@@ -949,10 +950,53 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
+  // Tab switching cho màn hình Giảng viên
+  const instTabBtns = document.querySelectorAll('.inst-tab-btn');
+  const instTabOverview = document.getElementById('inst-tab-overview');
+  const instTabLogs = document.getElementById('inst-tab-logs');
+  const thetaTabBadge = document.getElementById('theta-tab-badge');
+
+  function switchInstructorTab(tabId) {
+    instTabBtns.forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.instTab === tabId);
+    });
+    if (tabId === 'tab-overview') {
+      if (instTabOverview) {
+        instTabOverview.style.display = 'block';
+        instTabOverview.classList.add('active');
+      }
+      if (instTabLogs) {
+        instTabLogs.style.display = 'none';
+        instTabLogs.classList.remove('active');
+      }
+    } else if (tabId === 'tab-logs') {
+      if (instTabOverview) {
+        instTabOverview.style.display = 'none';
+        instTabOverview.classList.remove('active');
+      }
+      if (instTabLogs) {
+        instTabLogs.style.display = 'block';
+        instTabLogs.classList.add('active');
+      }
+      fetchThetaLogs();
+    }
+  }
+
+  instTabBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      switchInstructorTab(btn.dataset.instTab);
+    });
+  });
+
   window.handleSelectOverride = (id, err) => {
+    switchInstructorTab('tab-overview');
     if (overrideStudentId) overrideStudentId.value = id;
     if (overrideStudentError) overrideStudentError.value = err;
-    if (overrideNotes) overrideNotes.focus();
+    if (overrideNotes) {
+      overrideNotes.focus();
+      const panel = document.querySelector('.override-panel');
+      if (panel) panel.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
   };
 
   if (btnSubmitOverride) {
@@ -987,6 +1031,155 @@ document.addEventListener('DOMContentLoaded', () => {
       alert(`✅ ĐÃ LƯU CAN THIỆP CHO HỌC VIÊN ${studentId}`);
     });
   }
+
+  // ================= 6. THETA REAL-TIME AI LOG (logbythea.jsonl) =================
+  const thetaLogBody = document.getElementById('theta-log-body');
+  const thetaLogCount = document.getElementById('theta-log-count');
+  const thetaFilterStudent = document.getElementById('theta-filter-student');
+  const thetaFilterEvent = document.getElementById('theta-filter-event');
+  const btnRefreshThetaLog = document.getElementById('btn-refresh-theta-log');
+
+  let allThetaLogs = [];
+
+  async function fetchThetaLogs() {
+    if (!thetaLogBody) return;
+    try {
+      const res = await fetch(`${API_BASE}/api/ai-log/thea?limit=150`);
+      if (res.ok) {
+        const data = await res.json();
+        allThetaLogs = (data.logs || []).reverse(); // Mới nhất lên đầu
+        if (thetaTabBadge) {
+          thetaTabBadge.textContent = allThetaLogs.length;
+        }
+        updateThetaStudentFilterOptions();
+        renderThetaLogsUI();
+        return;
+      }
+    } catch (e) {
+      console.warn('[VLearn] Fetch theta logs error:', e.message);
+    }
+  }
+
+  function updateThetaStudentFilterOptions() {
+    if (!thetaFilterStudent) return;
+    const currentVal = thetaFilterStudent.value;
+    const students = [...new Set(allThetaLogs.map(l => l.student_id).filter(Boolean))];
+    thetaFilterStudent.innerHTML = '<option value="">Tất cả học viên</option>' + 
+      students.map(s => `<option value="${s}" ${s === currentVal ? 'selected' : ''}>Học viên ${s}</option>`).join('');
+  }
+
+  function renderThetaLogsUI() {
+    if (!thetaLogBody) return;
+    const studentFilter = thetaFilterStudent ? thetaFilterStudent.value : '';
+    const eventFilter = thetaFilterEvent ? thetaFilterEvent.value : '';
+
+    let filtered = allThetaLogs;
+    if (studentFilter) {
+      filtered = filtered.filter(l => l.student_id === studentFilter);
+    }
+    if (eventFilter) {
+      filtered = filtered.filter(l => l.event === eventFilter);
+    }
+
+    if (thetaLogCount) {
+      thetaLogCount.textContent = `${filtered.length} sự kiện`;
+    }
+
+    if (filtered.length === 0) {
+      thetaLogBody.innerHTML = '<tr><td colspan="7" style="text-align:center; color:#94a3b8; padding:24px;">Chưa có dữ liệu log phù hợp với bộ lọc.</td></tr>';
+      return;
+    }
+
+    thetaLogBody.innerHTML = filtered.map(log => {
+      // Format time
+      let timeStr = '';
+      try {
+        const d = new Date(log.timestamp);
+        timeStr = d.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      } catch (e) {
+        timeStr = (log.timestamp || '').slice(11, 19);
+      }
+
+      // Event Badge
+      const isQuestion = log.event === 'question_asked';
+      const eventBadge = isQuestion
+        ? '<span style="background:rgba(139,92,246,0.2); color:#c4b5fd; border:1px solid rgba(139,92,246,0.3); padding:2px 7px; border-radius:4px; font-size:0.72rem; font-weight:600;">❓ Câu hỏi</span>'
+        : '<span style="background:rgba(59,130,246,0.2); color:#93c5fd; border:1px solid rgba(59,130,246,0.3); padding:2px 7px; border-radius:4px; font-size:0.72rem; font-weight:600;">📝 Chấm IRT</span>';
+
+      // Nội dung / Câu trả lời
+      const contentText = isQuestion 
+        ? (log.question_text || 'Câu hỏi kiểm tra kiến thức') 
+        : (log.user_answer || (log.selected_option_id ? `Chọn phương án ${log.selected_option_id}` : 'Không rõ'));
+
+      // Chẩn đoán lỗi nếu có
+      let subDiagnosis = '';
+      if (log.diagnostic && log.diagnostic.is_misconception) {
+        subDiagnosis = `<div style="font-size:0.7rem; color:#fca5a5; margin-top:2px; text-overflow:ellipsis; overflow:hidden; white-space:nowrap;" title="${(log.diagnostic.faulty_assumption || '').replace(/"/g, '&quot;')}">⚠️ ${log.diagnostic.faulty_assumption}</div>`;
+      }
+
+      // Kết quả
+      let resultBadge = '<span style="color:#64748b;">-</span>';
+      if (!isQuestion) {
+        resultBadge = log.is_correct
+          ? `<span style="background:rgba(16,185,129,0.2); color:#34d399; padding:2px 6px; border-radius:4px; font-size:0.72rem; font-weight:700;">✅ Đúng (${log.score || 85}đ)</span>`
+          : `<span style="background:rgba(244,63,94,0.2); color:#fb7185; padding:2px 6px; border-radius:4px; font-size:0.72rem; font-weight:700;">❌ Sai (${log.score || 40}đ)</span>`;
+      }
+
+      // Biến thiên Theta θ & Cấp độ
+      let thetaSnippet = '';
+      if (!isQuestion && log.theta_before !== undefined && log.theta_after !== undefined) {
+        const delta = typeof log.delta_theta === 'number' ? log.delta_theta : (log.theta_after - log.theta_before);
+        const deltaFormatted = (delta >= 0 ? '+' : '') + delta.toFixed(3);
+        const deltaColor = delta >= 0 ? '#34d399' : '#fb7185';
+        thetaSnippet = `
+          <div style="font-family:var(--font-mono); font-size:0.74rem;">
+            <span>${log.theta_before.toFixed(2)} ➔ <strong>${log.theta_after.toFixed(2)}</strong></span>
+            <span style="color:${deltaColor}; font-weight:700; margin-left:3px;">(${deltaFormatted})</span>
+          </div>
+        `;
+      } else {
+        const th = typeof log.theta === 'number' ? log.theta.toFixed(2) : '0.00';
+        thetaSnippet = `<div style="font-family:var(--font-mono); font-size:0.74rem; color:#94a3b8;">θ = ${th}</div>`;
+      }
+
+      const lvlStr = log.level_after ? `Lv ${log.level_before ?? 1} ➔ Lv ${log.level_after}` : `Lv ${log.level || 1}`;
+      const streakStr = log.streak_after !== undefined ? `(🔥${log.streak_after}/2)` : '';
+      const levelSnippet = `<div style="font-size:0.7rem; color:#a5b4fc; margin-top:2px;">${lvlStr} <span style="color:#f59e0b;">${streakStr}</span></div>`;
+
+      // Nút Thao tác
+      const cleanErr = (log.diagnostic?.faulty_assumption || 'Lỗi ngộ nhận').replace(/'/g, "\\'");
+      const actionBtn = `
+        <button class="btn-mini-override" style="padding:3px 8px; font-size:0.7rem;" onclick="window.handleSelectOverride('${log.student_id}', '${cleanErr}')">
+          Can thiệp
+        </button>
+      `;
+
+      return `
+        <tr>
+          <td style="font-family:var(--font-mono); font-size:0.72rem; color:#94a3b8;">${timeStr}</td>
+          <td>
+            <span style="font-family:var(--font-mono); color:#60a5fa; font-weight:700; font-size:0.78rem;">${log.student_id}</span>
+            <span style="font-size:0.72rem; color:#94a3b8; margin-left:4px;">· S${log.page}</span>
+          </td>
+          <td>${eventBadge}</td>
+          <td style="max-width:280px; overflow:hidden;">
+            <div style="font-size:0.76rem; color:#f1f5f9; text-overflow:ellipsis; overflow:hidden; white-space:nowrap;" title="${(contentText).replace(/"/g, '&quot;')}">${contentText}</div>
+            ${subDiagnosis}
+          </td>
+          <td>${resultBadge}</td>
+          <td>
+            ${thetaSnippet}
+            ${levelSnippet}
+          </td>
+          <td style="text-align:center;">${actionBtn}</td>
+        </tr>
+      `;
+    }).join('');
+  }
+
+  if (thetaFilterStudent) thetaFilterStudent.addEventListener('change', renderThetaLogsUI);
+  if (thetaFilterEvent) thetaFilterEvent.addEventListener('change', renderThetaLogsUI);
+  if (btnRefreshThetaLog) btnRefreshThetaLog.addEventListener('click', fetchThetaLogs);
 
   // Khởi động
   initAuth();
