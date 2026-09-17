@@ -264,13 +264,21 @@ class RAGService:
     def get_citation(self, citation_id: str) -> Optional[dict]:
         return self.transcripts.get(citation_id)
 
+    def get_pdf_path(self, deck: str) -> Optional[Path]:
+        """Tìm file PDF tương ứng với deck trong thư mục SLIDES_DIR"""
+        candidates = list(SLIDES_DIR.glob(f"{deck}*.pdf"))
+        if candidates:
+            return candidates[0]
+        default_name = "d1-slide-hackathon.pdf" if deck == "d1" else "d2-slide-hackathon.pdf"
+        p = SLIDES_DIR / default_name
+        return p if p.exists() else None
+
     def extract_slide_page(self, deck: str, page: int) -> str:
         if page in self.slide_cache.get(deck, {}):
             return self.slide_cache[deck][page]
 
-        pdf_name = "d1-slide-hackathon.pdf" if deck == "d1" else "d2-slide-hackathon.pdf"
-        pdf_path = SLIDES_DIR / pdf_name
-        if not pdf_path.exists():
+        pdf_path = self.get_pdf_path(deck)
+        if not pdf_path or not pdf_path.exists():
             return ""
 
         try:
@@ -293,9 +301,8 @@ class RAGService:
         if cache_key in self._img_cache:
             return self._img_cache[cache_key]
 
-        pdf_name = "d1-slide-hackathon.pdf" if deck == "d1" else "d2-slide-hackathon.pdf"
-        pdf_path = SLIDES_DIR / pdf_name
-        if not pdf_path.exists():
+        pdf_path = self.get_pdf_path(deck)
+        if not pdf_path or not pdf_path.exists():
             return None
 
         try:

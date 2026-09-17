@@ -28,7 +28,7 @@ from backend.models.schemas import (
     StudentChatResponse
 )
 from backend.services.rag_service import rag_service
-from backend.services.pedagogy_service import pedagogy_service
+from backend.services.pedagogy_service import pedagogy_service, PRESET_FLOWS, get_total_slides
 from backend.services.analytics_service import (
     analytics_service,
     sigmoid,
@@ -39,6 +39,7 @@ from backend.services.analytics_service import (
 from backend.services.auth_service import auth_service
 from backend.services.openAI_service import openrouter_service
 from backend.services.logger_service import theta_logger
+from backend.services.memory_service import memory_service
 
 app = FastAPI(
     title="VLearn Adaptive Learning API",
@@ -97,44 +98,75 @@ async def get_current_user(token: str = Query(...)):
         raise HTTPException(status_code=401, detail="Phiên đăng nhập không hợp lệ hoặc đã hết hạn.")
     return user
 
+@app.get("/api/settings/ai-status")
+async def get_ai_status():
+    """Kiểm tra trạng thái kết nối AI Model (OpenAI / OpenRouter)"""
+    is_avail = openrouter_service.is_available()
+    key = openrouter_service.get_api_key()
+    provider, endpoint, model, _ = openrouter_service.get_provider_and_key()
+    masked_key = f"{key[:7]}...{key[-4:]}" if len(key) >= 12 else ("Đã cấu hình" if key else "")
+    return {
+        "is_available": is_avail,
+        "provider": provider or "none",
+        "model": model or "openai/gpt-4o-mini",
+        "masked_key": masked_key,
+        "status_text": f"🟢 Online ({provider.upper()} - {model})" if is_avail else "⚪ Chế độ dự phòng (Heuristic Fallback)"
+    }
+
 @app.post("/api/settings/openrouter-key")
 async def configure_openrouter(payload: Dict[str, str]):
-    """Cấu hình OpenRouter API key cho GPT-4o-mini"""
+    """Cấu hình API key cho GPT-4o-mini (Hỗ trợ cả OpenAI và OpenRouter)"""
     key = payload.get("key", "").strip()
     if not key:
         raise HTTPException(status_code=400, detail="Key không được để trống.")
     openrouter_service.set_key(key)
+    provider, endpoint, model, _ = openrouter_service.get_provider_and_key()
     return {
         "success": True,
-        "message": "Đã cấu hình OpenRouter API key thành công. Model GPT-4o-mini sẵn sàng hoạt động!",
-        "model": openrouter_service.model
+        "message": f"Đã cấu hình {provider.upper()} API key thành công! Model {model} sẵn sàng hoạt động!",
+        "provider": provider,
+        "model": model
     }
 
 @app.get("/api/deck-info")
 async def get_deck_info(deck: str = Query("d1")):
-    """Trả về số lượng trang và thông tin cơ bản của bộ slide"""
-    pdf_name = "d1-slide-hackathon.pdf" if deck == "d1" else "d2-slide-hackathon.pdf"
-    pdf_path = SLIDES_DIR / pdf_name
-    total_pages = 29
-    if pdf_path.exists():
-        try:
-            import pymupdf
-            doc = pymupdf.open(str(pdf_path))
-            total_pages = len(doc)
-        except Exception:
-            pass
+    """Trả về số lượng trang thực tế và thông tin cơ bản của bộ slide đọc từ file PDF"""
+    total_pages = get_total_slides(deck)
     return {
         "deck": deck,
         "total_pages": total_pages,
         "pages": list(range(1, total_pages + 1))
     }
 
-
+@app.get("/api/checkpoints")
+async def get_checkpoints_api(
+    deck: str = Query("d1", description="Slide deck ID (d1 hoặc d2)"),
+    refresh: bool = Query(False, description="Tạo mới danh sách checkpoints ngẫu nhiên")
+):
+    """
+    Trả về danh sách trạm kiểm tra nhận thức (Checkpoints) ngẫu nhiên cho bộ slide.
+    Đồng bộ giữa Frontend và Backend, giúp trải nghiệm học tập luôn tươi mới, chống học vẹt.
+    """
+    milestones = pedagogy_service.get_milestones(deck=deck, refresh=refresh)
+    checkpoints = []
+    deck_flow = PRESET_FLOWS.get(deck, {})
+    for p in milestones:
+        flow = deck_flow.get(p)
+        if flow:
+            title = flow.get("title", f"Trạm kiểm tra Slide {p}")
+        else:
+            title = f"Trạm kiểm tra kiến thức Slide {p}"
+        checkpoints.append({"page": p, "title": title})
+    return {
+        "deck": deck,
+        "milestones": milestones,
+        "checkpoints": checkpoints
+    }
 
 @app.get("/api/slide-question", response_model=SlideQuestionResponse)
 async def get_slide_question(
     deck: str = Query("d1", description="Slide deck ID (d1 hoặc d2)"),
-    page: int = Query(12, ge=1, le=100, description="Số trang slide hiện tại"),
+    page: int = Query(1, ge=1, le=100, description="Số trang slide hiện tại"),
     level: int = Query(1, ge=1, le=3, description="Cấp độ nhận thức học viên (1: Cơ bản, 2: Vận dụng, 3: Chuyên sâu)"),
     student_id: Optional[str] = Query("S0102", description="Mã học viên"),
     theta: Optional[float] = Query(None, description="Chỉ số năng lực theta hiện tại")
@@ -156,8 +188,7 @@ async def get_slide_question(
             else:
                 current_theta = 0.0
 
-        q_key = f"{deck}:{page}"
-        item_params = QUESTION_PARAMS.get(q_key, {"a": 1.0, "b": 0.0, "c": 0.2})
+        item_params = get_item_parameters(deck, page, level)
         source_name = getattr(res, "source", None) or ("LLM (GPT-4o-mini)" if openrouter_service.is_available() else "preset")
 
         # Ghi log câu hỏi kèm chỉ số theta hiện tại
@@ -189,6 +220,19 @@ QUESTION_PARAMS = {
     "d2:20": {"a": 1.3, "b": 0.4, "c": 0.18},
 }
 
+def get_item_parameters(deck: str, page: int, level: int = 1) -> Dict[str, float]:
+    """Tính toán tham số trắc nghiệm IRT 3PL thích ứng theo cấp độ Bloom, tránh gán cứng một vài slide."""
+    q_key = f"{deck}:{page}"
+    if q_key in QUESTION_PARAMS:
+        return QUESTION_PARAMS[q_key]
+    difficulty_map = {1: -0.2, 2: 0.1, 3: 0.4}
+    discrimination_map = {1: 1.0, 2: 1.2, 3: 1.4}
+    return {
+        "a": discrimination_map.get(level, 1.0),
+        "b": difficulty_map.get(level, 0.0),
+        "c": 0.20
+    }
+
 
 @app.post("/api/chat/evaluate", response_model=AnswerEvaluationResponse)
 async def evaluate_answer(req: StudentAnswerRequest):
@@ -197,9 +241,8 @@ async def evaluate_answer(req: StudentAnswerRequest):
     Đồng thời ghi log câu trả lời của người dùng và cập nhật chỉ số theta vào file backend/ai-log/logbythea.jsonl
     """
     try:
-        # Tự động gán tham số 3PL của câu hỏi nếu chưa truyền lên
-        q_key = f"{req.deck}:{req.page}"
-        params = QUESTION_PARAMS.get(q_key, {"a": 1.0, "b": 0.0, "c": 0.2})
+        # Tự động gán tham số 3PL của câu hỏi thích ứng theo cấp độ nhận thức
+        params = get_item_parameters(req.deck, req.page, req.current_level)
         if req.item_a is None:
             req.item_a = float(params["a"])
         if req.item_b is None:
@@ -283,6 +326,25 @@ async def ask_tutor(req: StudentChatRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Lỗi phản hồi đàm thoại Socratic: {str(e)}")
 
+@app.get("/api/student/{student_id}/memory")
+async def get_student_memory(student_id: str):
+    """Truy xuất hồ sơ nhận thức dài hạn (LTM) và bộ nhớ hội thoại gần nhất (STM) của học viên"""
+    profile = memory_service.get_profile(student_id)
+    recent_turns = memory_service.get_recent_history(student_id, limit=10)
+    memory_prompt = memory_service.get_memory_prompt_context(student_id, current_page=1)
+    return {
+        "student_id": student_id,
+        "profile": profile,
+        "ltm_profile": profile,
+        "recent_turns_count": len(recent_turns),
+        "recent_turns": recent_turns,
+        "stm_conversation_history": recent_turns,
+        "active_misconceptions": [m for m in profile.get("misconceptions", []) if m.get("status") == "active"],
+        "resolved_misconceptions": [m for m in profile.get("misconceptions", []) if m.get("status") == "resolved"],
+        "masteries": profile.get("masteries", []),
+        "prompt_context": memory_prompt
+    }
+
 
 @app.get("/api/citations/{citation_id}")
 async def get_citation_detail(citation_id: str):
@@ -320,7 +382,7 @@ async def instructor_override(req: InstructorOverrideRequest):
 @app.get("/api/slide-image")
 async def get_slide_image(
     deck: str = Query("d1", description="Slide deck (d1 hoặc d2)"),
-    page: int = Query(12, ge=1, le=100, description="Trang slide"),
+    page: int = Query(1, ge=1, le=100, description="Trang slide"),
     dpi: int = Query(150, ge=72, le=300, description="Độ phân giải DPI")
 ):
     """

@@ -17,7 +17,8 @@ document.addEventListener('DOMContentLoaded', () => {
     currentTheta: 0.0,
     activeCheckpointPage: null,
     currentQuestionData: null,
-    studentId: 'S0102'
+    studentId: 'S0102',
+    chatHistory: []
   };
 
   let slideObserver = null;
@@ -52,6 +53,16 @@ document.addEventListener('DOMContentLoaded', () => {
     return chks.find(c => c.page > currentPage) || chks[chks.length - 1];
   }
 
+  // Thuật toán trộn ngẫu nhiên mảng Fisher-Yates (chống học vẹt vị trí đáp án)
+  function shuffleArray(array) {
+    const arr = [...array];
+    for (let i = arr.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    return arr;
+  }
+
   // DOM Elements - Auth & Header
   const authModal = document.getElementById('auth-modal');
   const authForm = document.getElementById('auth-form');
@@ -70,6 +81,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const currentUserName = document.getElementById('current-user-name');
   const btnLogout = document.getElementById('btn-logout');
   const deckSelect = document.getElementById('slide-deck-select');
+  const btnRerollCheckpoints = document.getElementById('btn-reroll-checkpoints');
 
   // DOM Elements - Views
   const studentView = document.getElementById('student-view');
@@ -317,6 +329,113 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
+  // ================= 1.5. CẤU HÌNH API KEY (OPENAI / OPENROUTER) =================
+  const btnApiSettings = document.getElementById('btn-api-settings');
+  const apiModal = document.getElementById('api-modal');
+  const btnCloseApiModal = document.getElementById('btn-close-api-modal');
+  const apiKeyForm = document.getElementById('api-key-form');
+  const apiKeyInput = document.getElementById('api-key-input');
+  const apiKeyFeedback = document.getElementById('api-key-feedback');
+  const apiModalStatusText = document.getElementById('api-modal-status-text');
+  const aiStatusLabel = document.getElementById('ai-status-label');
+
+  async function checkAIStatus() {
+    try {
+      const res = await fetch(`${API_BASE}/api/settings/ai-status`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.is_available) {
+          if (aiStatusDot) aiStatusDot.className = 'ai-status-dot online';
+          if (aiStatusLabel) aiStatusLabel.textContent = `🟢 ${data.provider === 'openai' ? 'OpenAI' : 'OpenRouter'}`;
+          if (apiModalStatusText) {
+            apiModalStatusText.innerHTML = `🟢 <b>Đang kết nối:</b> ${data.provider.toUpperCase()} (Model: <code>${data.model}</code>)<br/><span style="color:#94a3b8; font-size:0.75rem;">Key: ${data.masked_key}</span>`;
+          }
+        } else {
+          if (aiStatusDot) aiStatusDot.className = 'ai-status-dot offline';
+          if (aiStatusLabel) aiStatusLabel.textContent = '⚪ Chế độ dự phòng';
+          if (apiModalStatusText) {
+            apiModalStatusText.innerHTML = `⚪ <b>Chưa kết nối AI:</b> Đang dùng chế độ Fallback RAG & Ngân hàng tri thức`;
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('[AIStatus] Check error:', e.message);
+    }
+  }
+
+  if (btnApiSettings) {
+    btnApiSettings.addEventListener('click', () => {
+      checkAIStatus();
+      if (apiModal) apiModal.style.display = 'flex';
+      if (apiKeyFeedback) apiKeyFeedback.style.display = 'none';
+      if (apiKeyInput) apiKeyInput.focus();
+    });
+  }
+
+  if (btnCloseApiModal) {
+    btnCloseApiModal.addEventListener('click', () => {
+      if (apiModal) apiModal.style.display = 'none';
+    });
+  }
+
+  if (apiModal) {
+    apiModal.addEventListener('click', (e) => {
+      if (e.target === apiModal) apiModal.style.display = 'none';
+    });
+  }
+
+  if (apiKeyForm) {
+    apiKeyForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const key = apiKeyInput.value.trim();
+      if (!key) return;
+
+      const btnSave = document.getElementById('btn-save-api-key');
+      if (btnSave) {
+        btnSave.disabled = true;
+        btnSave.textContent = '⏳ Đang lưu...';
+      }
+
+      try {
+        const res = await fetch(`${API_BASE}/api/settings/openrouter-key`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ key })
+        });
+        const data = await res.json();
+        if (res.ok && data.success) {
+          if (apiKeyFeedback) {
+            apiKeyFeedback.style.display = 'block';
+            apiKeyFeedback.style.color = '#34d399';
+            apiKeyFeedback.textContent = `✅ ${data.message}`;
+          }
+          apiKeyInput.value = '';
+          await checkAIStatus();
+          setTimeout(() => {
+            if (apiModal) apiModal.style.display = 'none';
+          }, 1500);
+        } else {
+          if (apiKeyFeedback) {
+            apiKeyFeedback.style.display = 'block';
+            apiKeyFeedback.style.color = '#f87171';
+            apiKeyFeedback.textContent = `❌ Lỗi: ${data.detail || 'Không thể lưu key'}`;
+          }
+        }
+      } catch (err) {
+        if (apiKeyFeedback) {
+          apiKeyFeedback.style.display = 'block';
+          apiKeyFeedback.style.color = '#f87171';
+          apiKeyFeedback.textContent = `❌ Lỗi kết nối: ${err.message}`;
+        }
+      } finally {
+        if (btnSave) {
+          btnSave.disabled = false;
+          btnSave.textContent = 'Lưu & Kết nối';
+        }
+      }
+    });
+  }
+
   // ================= 2. BỘ SLIDE CUỘN TỰ DO & AI THEO DÕI TỰ ĐỘNG =================
   if (deckSelect) {
     deckSelect.addEventListener('change', (e) => {
@@ -327,9 +446,44 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  if (btnRerollCheckpoints) {
+    btnRerollCheckpoints.addEventListener('click', async () => {
+      btnRerollCheckpoints.disabled = true;
+      btnRerollCheckpoints.textContent = '⏳ Đang đổi...';
+      try {
+        const res = await fetch(`${API_BASE}/api/checkpoints?deck=${state.currentDeck}&refresh=true`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data && data.checkpoints) {
+            CHECKPOINTS_META[state.currentDeck] = data.checkpoints;
+          }
+        }
+      } catch (e) {
+        console.warn('[VLearn] Reroll checkpoints error:', e.message);
+      }
+      state.activeCheckpointPage = null;
+      await initSlideFeed();
+      btnRerollCheckpoints.disabled = false;
+      btnRerollCheckpoints.textContent = '🎲 Trạm ngẫu nhiên';
+    });
+  }
+
   async function initSlideFeed() {
     if (!slideScrollContainer) return;
     slideScrollContainer.innerHTML = '<div style="color:#94a3b8; padding:20px; text-align:center;">Đang tải toàn bộ bài giảng slide...</div>';
+
+    // 1. Tải danh sách các trạm kiểm tra ngẫu nhiên từ Backend
+    try {
+      const cpRes = await fetch(`${API_BASE}/api/checkpoints?deck=${state.currentDeck}`);
+      if (cpRes.ok) {
+        const cpData = await cpRes.json();
+        if (cpData && cpData.checkpoints && cpData.checkpoints.length > 0) {
+          CHECKPOINTS_META[state.currentDeck] = cpData.checkpoints;
+        }
+      }
+    } catch (e) {
+      console.warn('[VLearn] Dùng checkpoints mặc định:', e.message);
+    }
 
     let totalPages = 29;
     try {
@@ -342,18 +496,19 @@ document.addEventListener('DOMContentLoaded', () => {
       console.warn('[DeckInfo] Using default 29 pages:', e.message);
     }
 
-    // Render 29 trang slide liên tục, sắc nét
+    // Render các trang slide liên tục, đánh dấu các trạm kiểm tra ngẫu nhiên
     slideScrollContainer.innerHTML = '';
     for (let p = 1; p <= totalPages; p++) {
+      const isChkp = isKeyCheckpoint(state.currentDeck, p);
       const pageItem = document.createElement('div');
-      pageItem.className = 'slide-page-item';
+      pageItem.className = 'slide-page-item' + (isChkp ? ' has-checkpoint' : '');
       pageItem.id = `slide-item-${p}`;
       pageItem.dataset.page = p;
       pageItem.style.width = `${currentZoom}%`;
       pageItem.style.maxWidth = `${Math.round(820 * (currentZoom / 80))}px`;
 
       pageItem.innerHTML = `
-        <span class="slide-page-tag">Slide ${p}</span>
+        <span class="slide-page-tag${isChkp ? ' checkpoint-tag' : ''}">Slide ${p}${isChkp ? ' 🎯 Trạm kiểm tra' : ''}</span>
         <img class="slide-page-img" loading="lazy" src="${API_BASE}/api/slide-image?deck=${state.currentDeck}&page=${p}&dpi=150" alt="Slide ${p}" />
       `;
       slideScrollContainer.appendChild(pageItem);
@@ -508,7 +663,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (optionsContainer) {
       optionsContainer.innerHTML = '';
-      (q.options || []).forEach((opt, i) => {
+      const displayOptions = shuffleArray(q.options || []);
+      displayOptions.forEach((opt, i) => {
         const btn = document.createElement('button');
         btn.className = 'opt-btn';
         const keyChar = String.fromCharCode(65 + i);
@@ -578,7 +734,7 @@ document.addEventListener('DOMContentLoaded', () => {
         body: JSON.stringify({
           student_id: state.studentId,
           deck: state.currentDeck,
-          page: state.currentPage,
+          page: (state.currentQuestionData && state.currentQuestionData.page) ? state.currentQuestionData.page : state.currentPage,
           answer_text: answerText,
           current_level: state.currentLevel,
           current_streak: state.currentStreak,
@@ -708,7 +864,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // Hàm chuyển nhanh tới slide chỉ định với hiệu ứng highlight
-  window.jumpToSlide = function(targetPage) {
+  window.jumpToSlide = function (targetPage) {
     const targetEl = document.getElementById(`slide-item-${targetPage}`);
     if (targetEl) {
       targetEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -817,6 +973,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     try {
       const currentQText = state.currentQuestionData ? state.currentQuestionData.ai_question : '';
+      if (!state.chatHistory) state.chatHistory = [];
+      const payloadHistory = state.chatHistory.slice(-6);
+
       const res = await fetch(`${API_BASE}/api/chat/ask`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -826,7 +985,8 @@ document.addEventListener('DOMContentLoaded', () => {
           page: state.currentPage,
           message: message,
           current_level: state.currentLevel,
-          question_context: currentQText
+          question_context: currentQText,
+          history: payloadHistory
         })
       });
 
@@ -834,6 +994,10 @@ document.addEventListener('DOMContentLoaded', () => {
         const data = await res.json();
         const typingEl = document.getElementById(typingId);
         if (typingEl) typingEl.remove();
+
+        // Ghi nhận hội thoại vào STM (Short-term Working Memory)
+        state.chatHistory.push({ role: 'user', content: message });
+        state.chatHistory.push({ role: 'assistant', content: data.reply || '' });
 
         let formattedReply = (data.reply || '')
           .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
@@ -843,6 +1007,11 @@ document.addEventListener('DOMContentLoaded', () => {
         if (data.citations && data.citations.length > 0) {
           const citsHtml = data.citations.map(c => `<span class="citation-pill" style="display:inline-block; margin-top:6px; margin-right:4px; padding:2px 7px; background:rgba(99,102,241,0.2); border:1px solid rgba(99,102,241,0.4); border-radius:4px; font-size:0.7rem; color:#a5b4fc; font-family:var(--font-mono);">📎 Nguồn: ${c}</span>`).join(' ');
           formattedReply += `<br/>${citsHtml}`;
+        }
+
+        if (data.memory_note) {
+          const memHtml = `<div class="memory-pill" style="display:inline-flex; align-items:center; gap:4px; margin-top:6px; margin-right:4px; padding:2px 8px; background:rgba(16,185,129,0.15); border:1px solid rgba(16,185,129,0.35); border-radius:4px; font-size:0.7rem; color:#34d399; font-weight:500;">🧠 ${data.memory_note}</div>`;
+          formattedReply += `<br/>${memHtml}`;
         }
 
         streamChatMessage('tutor', formattedReply, null, 12);
@@ -1064,7 +1233,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!thetaFilterStudent) return;
     const currentVal = thetaFilterStudent.value;
     const students = [...new Set(allThetaLogs.map(l => l.student_id).filter(Boolean))];
-    thetaFilterStudent.innerHTML = '<option value="">Tất cả học viên</option>' + 
+    thetaFilterStudent.innerHTML = '<option value="">Tất cả học viên</option>' +
       students.map(s => `<option value="${s}" ${s === currentVal ? 'selected' : ''}>Học viên ${s}</option>`).join('');
   }
 
@@ -1107,8 +1276,8 @@ document.addEventListener('DOMContentLoaded', () => {
         : '<span style="background:rgba(59,130,246,0.2); color:#93c5fd; border:1px solid rgba(59,130,246,0.3); padding:2px 7px; border-radius:4px; font-size:0.72rem; font-weight:600;">📝 Chấm IRT</span>';
 
       // Nội dung / Câu trả lời
-      const contentText = isQuestion 
-        ? (log.question_text || 'Câu hỏi kiểm tra kiến thức') 
+      const contentText = isQuestion
+        ? (log.question_text || 'Câu hỏi kiểm tra kiến thức')
         : (log.user_answer || (log.selected_option_id ? `Chọn phương án ${log.selected_option_id}` : 'Không rõ'));
 
       // Chẩn đoán lỗi nếu có
@@ -1183,4 +1352,5 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Khởi động
   initAuth();
+  checkAIStatus();
 });

@@ -6,10 +6,11 @@ Implements Block 4 of Sequence Diagram:
 - Instructor intervention & override engine
 """
 
+import json
 import math
 from typing import Dict, List, Any, Optional
 import pandas as pd
-from backend.config import SURVEY_FILE, CHATLOG_DIR
+from backend.config import SURVEY_FILE, CHATLOG_DIR, MISCONCEPTIONS_FILE
 from backend.models.schemas import (
     InstructorDashboardResponse,
     KPIMetric,
@@ -45,9 +46,9 @@ def update_theta(theta: float, is_correct: bool, a: float, b: float, c: float, l
 def evaluate_learner_by_theta(
     theta: float,
     is_correct: bool,
-    a: float,
-    b: float,
-    c: float,
+    a: float, #Độ phân biệt
+    b: float, #Độ khó
+    c: float, #Đoán mò
     current_level: int = 1,
     current_streak: int = 0,
     lr: float = 0.25
@@ -59,7 +60,7 @@ def evaluate_learner_by_theta(
     p = p3pl(theta, a, b, c)
     new_theta = update_theta(theta, is_correct, a, b, c, lr=lr)
     
-    new_streak = current_streak + 1 if is_correct else 0
+    new_streak = current_streak + 1 if is_correct else 0 #penalty
     
     # Xác định cấp độ (Level 1, 2, 3) dựa trên thông số new_theta và streak
     if new_theta >= 0.8:
@@ -269,32 +270,51 @@ class AnalyticsService:
             )
         ]
 
-        heatmap = [
-            MisconceptionHeatmapItem(
-                topic="Đồng nhất 1 từ tiếng Việt = 1 token",
-                affected_students=156,
-                pct=34.8,
-                severity="Cao"
-            ),
-            MisconceptionHeatmapItem(
-                topic="Hiểu nhầm Self-Attention duyệt tuần tự",
-                affected_students=132,
-                pct=29.5,
-                severity="Cao"
-            ),
-            MisconceptionHeatmapItem(
-                topic="Bỏ quên System Prompt khi tính chi phí API",
-                affected_students=98,
-                pct=21.9,
-                severity="Trung bình"
-            ),
-            MisconceptionHeatmapItem(
-                topic="Phân biệt Temperature = 0 và Tính tất định",
-                affected_students=62,
-                pct=13.8,
-                severity="Thấp"
-            )
-        ]
+        heatmap: List[MisconceptionHeatmapItem] = []
+        if MISCONCEPTIONS_FILE.exists():
+            try:
+                raw_m = json.loads(MISCONCEPTIONS_FILE.read_text(encoding="utf-8"))
+                for idx, m in enumerate(raw_m[:5]):
+                    topic_text = m.get("faulty_assumption") or m.get("id", f"Ngộ nhận {idx + 1}")
+                    affected = max(30, 156 - idx * 24)
+                    pct = round((affected / 448) * 100, 1)
+                    severity = "Cao" if pct >= 25 else ("Trung bình" if pct >= 15 else "Thấp")
+                    heatmap.append(MisconceptionHeatmapItem(
+                        topic=topic_text,
+                        affected_students=affected,
+                        pct=pct,
+                        severity=severity
+                    ))
+            except Exception as e:
+                print(f"[AnalyticsService] Error parsing misconceptions for heatmap: {e}")
+
+        if not heatmap:
+            heatmap = [
+                MisconceptionHeatmapItem(
+                    topic="Đồng nhất 1 từ tiếng Việt = 1 token",
+                    affected_students=156,
+                    pct=34.8,
+                    severity="Cao"
+                ),
+                MisconceptionHeatmapItem(
+                    topic="Hiểu nhầm Self-Attention duyệt tuần tự",
+                    affected_students=132,
+                    pct=29.5,
+                    severity="Cao"
+                ),
+                MisconceptionHeatmapItem(
+                    topic="Bỏ quên System Prompt khi tính chi phí API",
+                    affected_students=98,
+                    pct=21.9,
+                    severity="Trung bình"
+                ),
+                MisconceptionHeatmapItem(
+                    topic="Phân biệt Temperature = 0 và Tính tất định",
+                    affected_students=62,
+                    pct=13.8,
+                    severity="Thấp"
+                )
+            ]
 
         roster = [
             StudentRosterItem(
